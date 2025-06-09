@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grafana Clone</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Auth Forms -->
+        <div id="authForms">
+            <!-- Login Form -->
+            <div id="loginForm" class="auth-form">
+                <h2>Login</h2>
+                <form onsubmit="event.preventDefault(); login();">
+                    <div class="form-group">
+                        <label for="loginEmail">Email:</label>
+                        <input type="email" id="loginEmail" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="loginPassword">Password:</label>
+                        <input type="password" id="loginPassword" required>
+                    </div>
+                    <button type="submit">Login</button>
+                </form>
+                <p>Don't have an account? <a href="#" onclick="showRegisterForm()">Register</a></p>
+            </div>
+
+            <!-- Register Form -->
+            <div id="registerForm" class="auth-form" style="display: none;">
+                <h2>Register</h2>
+                <form onsubmit="event.preventDefault(); register();">
+                    <div class="form-group">
+                        <label for="registerName">Name:</label>
+                        <input type="text" id="registerName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="registerEmail">Email:</label>
+                        <input type="email" id="registerEmail" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="registerPassword">Password:</label>
+                        <input type="password" id="registerPassword" required>
+                    </div>
+                    <button type="submit">Register</button>
+                </form>
+                <p>Already have an account? <a href="#" onclick="showLoginForm()">Login</a></p>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div id="mainContent" style="display: none;">
+            <header>
+                <h1>Grafana Clone</h1>
+                <nav>
+                    <button onclick="showDataSources()">Data Sources</button>
+                    <button onclick="showDashboards()">Dashboards</button>
+                    <button onclick="logout()">Logout</button>
+                </nav>
+            </header>
+
+            <!-- Data Sources Section -->
+            <div id="dataSourcesSection">
+                <h2>Data Sources</h2>
+                <button onclick="showAddDataSourceForm()">Add Data Source</button>
+                <ul id="dataSourcesList"></ul>
+
+                <!-- Add Data Source Form -->
+                <div id="addDataSourceForm" style="display: none;">
+                    <h3>Add New Data Source</h3>
+                    <form onsubmit="event.preventDefault(); addDataSource();">
+                        <div class="form-group">
+                            <label for="dsName">Name:</label>
+                            <input type="text" id="dsName" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="dsType">Type:</label>
+                            <select id="dsType" required>
+                                <option value="mysql">MySQL</option>
+                                <option value="postgresql">PostgreSQL</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="dsHost">Host:</label>
+                            <input type="text" id="dsHost" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="dsPort">Port:</label>
+                            <input type="number" id="dsPort" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="dsDatabase">Database:</label>
+                            <input type="text" id="dsDatabase" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="dsUsername">Username:</label>
+                            <input type="text" id="dsUsername" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="dsPassword">Password:</label>
+                            <input type="password" id="dsPassword" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="dsUseSsl">Use SSL:</label>
+                            <input type="checkbox" id="dsUseSsl">
+                        </div>
+                        <button type="submit">Add Data Source</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Dashboards Section -->
+            <div id="dashboardsSection" style="display: none;">
+                <h2>Dashboards</h2>
+                <button onclick="showAddDashboardForm()">Create Dashboard</button>
+                
+                <form id="addDashboardForm" style="display: none;">
+                    <h3>Create New Dashboard</h3>
+                    <div>
+                        <label for="dashboardName">Name:</label>
+                        <input type="text" id="dashboardName" required>
+                    </div>
+                    <div>
+                        <label for="dashboardDescription">Description:</label>
+                        <textarea id="dashboardDescription"></textarea>
+                    </div>
+                    <div>
+                        <label for="dashboardDataSource">Data Source:</label>
+                        <select id="dashboardDataSource" required>
+                            <option value="">Select a data source</option>
+                        </select>
+                    </div>
+                    <button type="button" onclick="addDashboard()">Create</button>
+                    <button type="button" onclick="showAddDashboardForm()">Cancel</button>
+                </form>
+                
+                <ul id="dashboardsList"></ul>
+            </div>
+
+            <div id="dashboard-view" class="view" style="display: none;">
+                <h2>Dashboard</h2>
+                <div class="dashboard-controls">
+                    <select id="data-source-select" required>
+                        <option value="">Select Data Source</option>
+                    </select>
+                    <select id="table-select" disabled>
+                        <option value="">Select Table</option>
+                    </select>
+                    <select id="columns-select" multiple disabled>
+                        <option value="">Select Columns</option>
+                    </select>
+                    <select id="chart-type-select" disabled>
+                        <option value="">Select Chart Type</option>
+                        <option value="table">Table</option>
+                        <option value="bar">Bar Chart</option>
+                        <option value="line">Line Chart</option>
+                        <option value="pie">Pie Chart</option>
+                        <option value="doughnut">Doughnut Chart</option>
+                    </select>
+                    <button id="create-visualization-btn" disabled>Create Visualization</button>
+                </div>
+                <div id="visualization-container" class="visualization-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+    .visualization-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+        gap: 20px;
+        padding: 20px;
+    }
+
+    .chart-container {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        padding: 20px;
+    }
+
+    .dashboard-controls {
+        display: flex;
+        gap: 10px;
+        padding: 20px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+
+    .dashboard-controls select,
+    .dashboard-controls button {
+        padding: 8px 12px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+        min-width: 150px;
+    }
+
+    #columns-select {
+        min-width: 200px;
+        height: 100px;
+    }
+
+    .dashboard-controls button {
+        background: #4CAF50;
+        color: white;
+        border: none;
+        cursor: pointer;
+    }
+
+    .dashboard-controls button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+    }
+    </style>
+
+    <!-- Add Chart.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <script>
+        // Fallback for Chart.js if CDN fails
+        if (typeof Chart === 'undefined') {
+            const script = document.createElement('script');
+            script.src = '/js/chart.umd.min.js';
+            document.head.appendChild(script);
+        }
+    </script>
+    <script src="/js/app.js"></script>
+</body>
+</html> 

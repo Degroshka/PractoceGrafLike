@@ -1,0 +1,8 @@
+.git
+.gitignore
+.env
+node_modules
+vendor
+storage/logs/*
+storage/cache/*
+storage/app/*
