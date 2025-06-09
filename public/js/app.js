@@ -741,91 +741,167 @@ function loadChartJS() {
 }
 
 // Create a new visualization
-async function createVisualization(dataSourceId, table, columns, type, options = {}) {
+async function createVisualization() {
     try {
-        // Get table data
-        const response = await fetch('/api/data-sources/table-data', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + localStorage.getItem('token')
-            },
-            body: JSON.stringify({
-                data_source_id: dataSourceId,
-                table_name: table,
-                columns: columns,
-                limit: 0 // Get all data
-            })
-        });
-
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error(result.message);
-        }
-
-        if (!result.data || !result.data.rows) {
-            throw new Error('Invalid data structure received from server');
-        }
-
-        // Create visualization container
-        const container = document.getElementById('visualization-container');
-        const chartContainer = document.createElement('div');
-        chartContainer.className = 'chart-container';
-        container.appendChild(chartContainer);
-
-        // Create canvas
-        const ctx = document.createElement('canvas');
-        chartContainer.appendChild(ctx);
-
-        // Get selected columns
+        const dataSourceId = document.getElementById('data-source-select').value;
+        const tableName = document.getElementById('table-select').value;
+        const chartType = document.getElementById('chart-type-select').value;
         const xAxisColumn = document.getElementById('columns-select').value;
         const yAxisColumn = document.getElementById('y-axis-select').value;
 
-        if (!xAxisColumn || !yAxisColumn) {
-            throw new Error('Please select both X-axis and Y-axis columns');
+        if (!dataSourceId || !tableName) {
+            throw new Error('Data source ID and table name are required');
         }
 
-        // Prepare data for chart
-        const labels = result.data.rows.map(row => row[xAxisColumn]);
-        const values = result.data.rows.map(row => row[yAxisColumn]);
+        // Load table data
+        const tableData = await loadTableData(dataSourceId, tableName);
+        if (!tableData || !tableData.rows || !tableData.rows.length) {
+            throw new Error('No data available for visualization');
+        }
 
-        // Create chart
-        new Chart(ctx, {
-            type: type,
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: yAxisColumn,
-                    data: values,
-                    backgroundColor: getRandomColor(),
-                    borderColor: getRandomColor(),
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'top',
-                    },
-                    title: {
-                        display: true,
-                        text: `${yAxisColumn} by ${xAxisColumn}`
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
+        // Create visualization container
+        const container = document.createElement('div');
+        container.className = 'chart-container';
+        document.getElementById('visualization-container').appendChild(container);
+
+        // Create visualization based on type
+        if (chartType === 'table') {
+            createTableVisualization(container, tableData);
+        } else {
+            createChartVisualization(container, tableData, chartType);
+        }
 
     } catch (error) {
         console.error('Error creating visualization:', error);
         showMessage(error.message, 'error');
     }
+}
+
+function createChartVisualization(container, data, chartType) {
+    const canvas = document.createElement('canvas');
+    container.appendChild(canvas);
+
+    const xAxisColumn = document.getElementById('columns-select').value;
+    const yAxisColumn = document.getElementById('y-axis-select').value;
+
+    // Helper function to safely convert values
+    const safeConvert = (value) => {
+        if (value === null || value === undefined) return '';
+        if (typeof value === 'number') return value;
+        if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+        if (value instanceof Date) return value.toLocaleDateString();
+        return String(value);
+    };
+
+    // Helper function to aggregate data for pie/doughnut charts
+    const aggregateData = (rows, labelKey, valueKey) => {
+        const aggregated = {};
+        rows.forEach(row => {
+            const label = safeConvert(row[labelKey]);
+            const value = parseFloat(row[valueKey]) || 0;
+            aggregated[label] = (aggregated[label] || 0) + value;
+        });
+        return {
+            labels: Object.keys(aggregated),
+            values: Object.values(aggregated)
+        };
+    };
+
+    // Prepare data for chart
+    let labels, values, backgroundColor;
+
+    if (chartType === 'pie' || chartType === 'doughnut') {
+        // For pie/doughnut charts, aggregate data by x-axis values
+        const aggregated = aggregateData(data.rows, xAxisColumn, yAxisColumn);
+        labels = aggregated.labels;
+        values = aggregated.values;
+        backgroundColor = labels.map(() => getRandomColor());
+    } else {
+        // For other charts, process data based on type
+        labels = data.rows.map(row => safeConvert(row[xAxisColumn]));
+        
+        // Try to convert values to numbers for better visualization
+        values = data.rows.map(row => {
+            const val = row[yAxisColumn];
+            if (typeof val === 'number') return val;
+            if (typeof val === 'string') {
+                const num = parseFloat(val);
+                return isNaN(num) ? 0 : num;
+            }
+            return 0;
+        });
+
+        // For line and bar charts, use different colors for each data point
+        if (chartType === 'line' || chartType === 'bar') {
+            backgroundColor = values.map(() => getRandomColor());
+        } else {
+            backgroundColor = getRandomColor();
+        }
+    }
+
+    // Create chart
+    new Chart(canvas, {
+        type: chartType,
+        data: {
+            labels: labels,
+            datasets: [{
+                label: yAxisColumn,
+                data: values,
+                backgroundColor: backgroundColor,
+                borderColor: chartType === 'pie' || chartType === 'doughnut' ? backgroundColor : getRandomColor(),
+                borderWidth: 1,
+                fill: chartType === 'line' ? false : true,
+                tension: chartType === 'line' ? 0.4 : 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                },
+                title: {
+                    display: true,
+                    text: `${yAxisColumn} by ${xAxisColumn}`
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== undefined) {
+                                label += context.parsed.y.toLocaleString();
+                            } else if (context.parsed !== undefined) {
+                                label += context.parsed.toLocaleString();
+                            }
+                            return label;
+                        }
+                    }
+                }
+            },
+            scales: chartType === 'pie' || chartType === 'doughnut' ? {} : {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return value.toLocaleString();
+                        }
+                    }
+                },
+                x: {
+                    ticks: {
+                        callback: function(value, index) {
+                            const label = this.getLabelForValue(value);
+                            return label.length > 10 ? label.substr(0, 10) + '...' : label;
+                        }
+                    }
+                }
+            }
+        }
+    });
 }
 
 function prepareChartData(data, columns, type, options) {
@@ -1238,66 +1314,6 @@ document.getElementById('data-source-select').addEventListener('change', async f
                     container.appendChild(table);
                 }
 
-                // Функция для создания графической визуализации
-                function createChartVisualization(container, data, chartType) {
-                    const canvas = document.createElement('canvas');
-                    container.appendChild(canvas);
-
-                    const xAxisColumn = document.getElementById('columns-select').value;
-                    const yAxisColumn = document.getElementById('y-axis-select').value;
-
-                    // Get columns from first row if not provided
-                    const columns = data.columns || Object.keys(data.rows[0] || {}).map(name => ({ name }));
-
-                    // Prepare data for chart
-                    let labels, values, backgroundColor;
-
-                    if (chartType === 'pie' || chartType === 'doughnut') {
-                        // For pie/doughnut charts, use the first column for labels and second for values
-                        labels = data.rows.map(row => row[xAxisColumn]);
-                        values = data.rows.map(row => row[yAxisColumn]);
-                        backgroundColor = labels.map(() => getRandomColor());
-                    } else {
-                        // For other charts, use selected columns
-                        labels = data.rows.map(row => row[xAxisColumn]);
-                        values = data.rows.map(row => row[yAxisColumn]);
-                        backgroundColor = getRandomColor();
-                    }
-
-                    // Create chart
-                    new Chart(canvas, {
-                        type: chartType,
-                        data: {
-                            labels: labels,
-                            datasets: [{
-                                label: yAxisColumn,
-                                data: values,
-                                backgroundColor: backgroundColor,
-                                borderColor: chartType === 'pie' || chartType === 'doughnut' ? backgroundColor : getRandomColor(),
-                                borderWidth: 1
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: {
-                                    position: 'top',
-                                },
-                                title: {
-                                    display: true,
-                                    text: `${yAxisColumn} by ${xAxisColumn}`
-                                }
-                            },
-                            scales: chartType === 'pie' || chartType === 'doughnut' ? {} : {
-                                y: {
-                                    beginAtZero: true
-                                }
-                            }
-                        }
-                    });
-                }
-
             } catch (error) {
                 console.error('Error:', error);
                 showMessage('Failed to load table columns: ' + error.message, 'error');
@@ -1443,22 +1459,59 @@ function createChartVisualization(container, data, chartType) {
     const xAxisColumn = document.getElementById('columns-select').value;
     const yAxisColumn = document.getElementById('y-axis-select').value;
 
-    // Get columns from first row if not provided
-    const columns = data.columns || Object.keys(data.rows[0] || {}).map(name => ({ name }));
+    // Helper function to safely convert values
+    const safeConvert = (value) => {
+        if (value === null || value === undefined) return '';
+        if (typeof value === 'number') return value;
+        if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+        if (value instanceof Date) return value.toLocaleDateString();
+        return String(value);
+    };
+
+    // Helper function to aggregate data for pie/doughnut charts
+    const aggregateData = (rows, labelKey, valueKey) => {
+        const aggregated = {};
+        rows.forEach(row => {
+            const label = safeConvert(row[labelKey]);
+            const value = parseFloat(row[valueKey]) || 0;
+            aggregated[label] = (aggregated[label] || 0) + value;
+        });
+        return {
+            labels: Object.keys(aggregated),
+            values: Object.values(aggregated)
+        };
+    };
 
     // Prepare data for chart
     let labels, values, backgroundColor;
 
     if (chartType === 'pie' || chartType === 'doughnut') {
-        // For pie/doughnut charts, use the first column for labels and second for values
-        labels = data.rows.map(row => row[xAxisColumn]);
-        values = data.rows.map(row => row[yAxisColumn]);
+        // For pie/doughnut charts, aggregate data by x-axis values
+        const aggregated = aggregateData(data.rows, xAxisColumn, yAxisColumn);
+        labels = aggregated.labels;
+        values = aggregated.values;
         backgroundColor = labels.map(() => getRandomColor());
     } else {
-        // For other charts, use selected columns
-        labels = data.rows.map(row => row[xAxisColumn]);
-        values = data.rows.map(row => row[yAxisColumn]);
-        backgroundColor = getRandomColor();
+        // For other charts, process data based on type
+        labels = data.rows.map(row => safeConvert(row[xAxisColumn]));
+        
+        // Try to convert values to numbers for better visualization
+        values = data.rows.map(row => {
+            const val = row[yAxisColumn];
+            if (typeof val === 'number') return val;
+            if (typeof val === 'string') {
+                const num = parseFloat(val);
+                return isNaN(num) ? 0 : num;
+            }
+            return 0;
+        });
+
+        // For line and bar charts, use different colors for each data point
+        if (chartType === 'line' || chartType === 'bar') {
+            backgroundColor = values.map(() => getRandomColor());
+        } else {
+            backgroundColor = getRandomColor();
+        }
     }
 
     // Create chart
@@ -1471,7 +1524,9 @@ function createChartVisualization(container, data, chartType) {
                 data: values,
                 backgroundColor: backgroundColor,
                 borderColor: chartType === 'pie' || chartType === 'doughnut' ? backgroundColor : getRandomColor(),
-                borderWidth: 1
+                borderWidth: 1,
+                fill: chartType === 'line' ? false : true,
+                tension: chartType === 'line' ? 0.4 : 0
             }]
         },
         options: {
@@ -1484,11 +1539,40 @@ function createChartVisualization(container, data, chartType) {
                 title: {
                     display: true,
                     text: `${yAxisColumn} by ${xAxisColumn}`
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== undefined) {
+                                label += context.parsed.y.toLocaleString();
+                            } else if (context.parsed !== undefined) {
+                                label += context.parsed.toLocaleString();
+                            }
+                            return label;
+                        }
+                    }
                 }
             },
             scales: chartType === 'pie' || chartType === 'doughnut' ? {} : {
                 y: {
-                    beginAtZero: true
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return value.toLocaleString();
+                        }
+                    }
+                },
+                x: {
+                    ticks: {
+                        callback: function(value, index) {
+                            const label = this.getLabelForValue(value);
+                            return label.length > 10 ? label.substr(0, 10) + '...' : label;
+                        }
+                    }
                 }
             }
         }
