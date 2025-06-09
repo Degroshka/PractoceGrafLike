@@ -40,9 +40,13 @@ class Database {
                 PDO::ATTR_EMULATE_PREPARES => false,
             ];
 
-            if ($this->config['use_ssl']) {
-                $options[PDO::MYSQL_ATTR_SSL_CA] = $this->config['ssl_ca'];
+            // Only add SSL options if explicitly enabled
+            if ($this->config['use_ssl'] ?? false) {
+                $options[PDO::MYSQL_ATTR_SSL_CA] = $this->config['ssl_ca'] ?? null;
                 $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = true;
+            } else {
+                // Explicitly disable SSL
+                $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
             }
 
             try {
@@ -174,5 +178,13 @@ class Database {
             default:
                 throw new PDOException("Unsupported database type: {$type}");
         }
+    }
+
+    public function disableSSL()
+    {
+        $this->config['use_ssl'] = false;
+        $this->config['ssl_cert'] = null;
+        $this->config['ssl_key'] = null;
+        $this->config['ssl_ca'] = null;
     }
 } 

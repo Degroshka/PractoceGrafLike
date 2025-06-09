@@ -615,58 +615,115 @@ async function viewDashboard(id) {
                         throw new Error(result.message || 'Failed to load table structure');
                     }
 
-                    // Add columns to both selects
-                    if (result.data && Array.isArray(result.data)) {
-                        result.data.forEach(column => {
-                            if (!column.name || !column.type) {
-                                console.warn('Invalid column data:', column);
-                                return;
-                            }
-
-                            // Add to X-axis select
+                    // Update columns select
+                    columnsSelect.innerHTML = '<option value="">Select Columns</option>';
+                    if (result.data && result.data.columns) {
+                        console.log('Server response:', result.data); // Debug log
+                        result.data.columns.forEach(column => {
+                            console.log('Processing column:', column); // Debug log
                             const option = document.createElement('option');
                             option.value = column.name;
                             option.textContent = `${column.name} (${column.type})`;
-                            option.dataset.type = column.type;
+                            // Сохраняем тип колонки как атрибут data-type
+                            if (column.type) {
+                                option.dataset.type = column.type.toLowerCase();
+                                console.log('Set data-type for', column.name, 'to', column.type.toLowerCase()); // Debug log
+                            } else {
+                                console.warn('No type for column:', column.name); // Debug log
+                            }
                             columnsSelect.appendChild(option);
-
-                            // Add to Y-axis select
-                            const yOption = document.createElement('option');
-                            yOption.value = column.name;
-                            yOption.textContent = `${column.name} (${column.type})`;
-                            yOption.dataset.type = column.type;
-                            yAxisSelect.appendChild(yOption);
                         });
-
-                        // Enable selects
-                        columnsSelect.disabled = false;
-                        yAxisSelect.disabled = false;
-                        chartTypeSelect.disabled = false;
-                    } else {
-                        console.error('Invalid data structure:', result.data);
-                        throw new Error('Invalid column data structure received from server');
                     }
+
+                    // Enable columns select
+                    columnsSelect.disabled = false;
+
+                    // Remove existing event listeners
+                    const newColumnsSelect = columnsSelect.cloneNode(true);
+                    columnsSelect.parentNode.replaceChild(newColumnsSelect, columnsSelect);
+
+                    // Add event listener for column selection
+                    newColumnsSelect.addEventListener('change', function() {
+                        const selectedColumns = Array.from(this.selectedOptions);
+                        console.log('Selected columns:', selectedColumns); // Debug log
+                        selectedColumns.forEach(col => {
+                            console.log('Column type for', col.value, ':', col.dataset.type); // Debug log
+                        });
+                        const chartType = document.getElementById('chart-type-select').value;
+                        
+                        // Проверяем совместимость выбранных колонок с типом графика
+                        const isCompatible = checkChartCompatibility(selectedColumns, chartType);
+                        console.log('Chart compatibility:', isCompatible); // Debug log
+                        
+                        // Обновляем доступные типы графиков
+                        updateAvailableChartTypes(selectedColumns);
+                        
+                        // Enable create button only if columns and chart type are selected and compatible
+                        document.getElementById('create-visualization-btn').disabled = 
+                            selectedColumns.length === 0 || !chartType || !isCompatible;
+                    });
+
                 } catch (error) {
-                    console.error('Error loading table structure:', error);
-                    showMessage(error.message, 'error');
+                    console.error('Error:', error);
+                    showMessage('Failed to load table columns: ' + error.message, 'error');
                 }
             }
         };
 
         // Add event listener for create visualization button
-        document.getElementById('create-visualization-btn').onclick = async function() {
-            const dataSourceId = dataSourceSelect.value;
-            const table = document.getElementById('table-select').value;
-            const columns = Array.from(document.getElementById('columns-select').selectedOptions).map(opt => opt.value);
-            const type = document.getElementById('chart-type-select').value;
+        document.getElementById('create-visualization-btn').addEventListener('click', async function() {
+            const dataSourceId = document.getElementById('data-source-select').value;
+            const selectedTable = document.getElementById('table-select').value;
+            const selectedColumns = Array.from(document.getElementById('columns-select').selectedOptions).map(option => option.value);
+            const chartType = document.getElementById('chart-type-select').value;
 
-            if (!dataSourceId || !table || columns.length === 0 || !type) {
+            if (!dataSourceId || !selectedTable || selectedColumns.length === 0 || !chartType) {
                 showMessage('Please select all required fields', 'error');
                 return;
             }
 
-            await createVisualization(dataSourceId, table, columns, type);
-        };
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch('/api/data-sources/table-data', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        data_source_id: dataSourceId,
+                        table_name: selectedTable,
+                        columns: selectedColumns,
+                        limit: 1000
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to get table data');
+                }
+
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error(result.message);
+                }
+
+                // Create visualization
+                const container = document.createElement('div');
+                container.className = 'visualization-item';
+                document.getElementById('visualization-container').appendChild(container);
+
+                if (chartType === 'table') {
+                    createTableVisualization(container, result.data, selectedTable);
+                } else {
+                    createChartVisualization(container, result.data, chartType);
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                showMessage('Failed to create visualization: ' + error.message, 'error');
+            }
+        });
 
         // Load existing visualizations if dashboard ID is provided
         if (id) {
@@ -721,40 +778,46 @@ function loadChartJS() {
 }
 
 // Create a new visualization
-async function createVisualization() {
-    try {
-        const dataSourceId = document.getElementById('data-source-select').value;
-        const tableName = document.getElementById('table-select').value;
-        const chartType = document.getElementById('chart-type-select').value;
-        const xAxisColumn = document.getElementById('columns-select').value;
-        const yAxisColumn = document.getElementById('y-axis-select').value;
-
-        if (!dataSourceId || !tableName) {
-            throw new Error('Data source ID and table name are required');
-        }
-
-        // Load table data
-        const tableData = await loadTableData(dataSourceId, tableName);
-        if (!tableData || !tableData.rows || !tableData.rows.length) {
-            throw new Error('No data available for visualization');
-        }
-
-        // Create visualization container
-        const container = document.createElement('div');
-        container.className = 'chart-container';
-        document.getElementById('visualization-container').appendChild(container);
-
-        // Create visualization based on type
-        if (chartType === 'table') {
-            createTableVisualization(container, tableData);
-        } else {
-            createChartVisualization(container, tableData, chartType);
-        }
-
-    } catch (error) {
-        console.error('Error creating visualization:', error);
-        showMessage(error.message, 'error');
+function createTableVisualization(container, data, title = '') {
+    // Create title if provided
+    if (title) {
+        const titleElement = document.createElement('h3');
+        titleElement.textContent = title;
+        container.appendChild(titleElement);
     }
+
+    const table = document.createElement('table');
+    table.className = 'data-table';
+    
+    // Create header
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    
+    // Get columns from first row if not provided
+    const columns = data.columns || Object.keys(data.rows[0] || {}).map(name => ({ name }));
+    
+    columns.forEach(column => {
+        const th = document.createElement('th');
+        th.textContent = column.name;
+        headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+    
+    // Create body
+    const tbody = document.createElement('tbody');
+    data.rows.forEach(row => {
+        const tr = document.createElement('tr');
+        columns.forEach(column => {
+            const td = document.createElement('td');
+            td.textContent = row[column.name] ?? '';
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    
+    container.appendChild(table);
 }
 
 function createChartVisualization(container, data, chartType) {
@@ -1042,59 +1105,59 @@ document.getElementById('data-source-select').addEventListener('change', async f
         // Add event listener for table selection
         tableSelect.addEventListener('change', async function() {
             const selectedTable = this.value;
+            const columnsSelect = document.getElementById('columns-select');
+            columnsSelect.innerHTML = '<option value="">Select Columns</option>';
+            columnsSelect.disabled = true;
+
             if (!selectedTable) {
                 return;
             }
 
             try {
-                // Get columns for selected table
-                const columnsResponse = await fetch('/api/data-sources/table-data', {
+                const token = localStorage.getItem('token');
+                if (!token) {
+                    showLoginForm();
+                    return;
+                }
+
+                const response = await fetch('/api/data-sources/table-columns', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
                         'Accept': 'application/json'
                     },
                     body: JSON.stringify({
                         data_source_id: dataSourceId,
-                        table_name: selectedTable,
-                        limit: 0 // Получаем только структуру таблицы
+                        table_name: selectedTable
                     })
                 });
 
-                if (!columnsResponse.ok) {
+                if (!response.ok) {
                     throw new Error('Failed to get table columns');
                 }
 
-                const columnsResult = await columnsResponse.json();
-                if (!columnsResult.success) {
-                    throw new Error(columnsResult.message);
-                }
-
-                // Get or create columns select
-                let columnsSelect = document.getElementById('columns-select');
-                if (!columnsSelect) {
-                    // Create columns select if it doesn't exist
-                    const columnsDiv = document.createElement('div');
-                    columnsDiv.className = 'form-group';
-                    columnsDiv.innerHTML = `
-                        <label for="columns-select">Columns:</label>
-                        <select id="columns-select" multiple class="form-control" disabled>
-                            <option value="">Select Columns</option>
-                        </select>
-                    `;
-                    tableSelect.parentNode.insertBefore(columnsDiv, tableSelect.nextSibling);
-                    columnsSelect = document.getElementById('columns-select');
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error(result.message);
                 }
 
                 // Update columns select
                 columnsSelect.innerHTML = '<option value="">Select Columns</option>';
-                if (columnsResult.data && columnsResult.data.columns) {
-                    columnsResult.data.columns.forEach(column => {
+                if (result.data && result.data.columns) {
+                    console.log('Server response:', result.data); // Debug log
+                    result.data.columns.forEach(column => {
+                        console.log('Processing column:', column); // Debug log
                         const option = document.createElement('option');
                         option.value = column.name;
-                        option.textContent = column.name;
-                        option.dataset.type = column.type;
+                        option.textContent = `${column.name} (${column.type})`;
+                        // Сохраняем тип колонки как атрибут data-type
+                        if (column.type) {
+                            option.dataset.type = column.type.toLowerCase();
+                            console.log('Set data-type for', column.name, 'to', column.type.toLowerCase()); // Debug log
+                        } else {
+                            console.warn('No type for column:', column.name); // Debug log
+                        }
                         columnsSelect.appendChild(option);
                     });
                 }
@@ -1102,13 +1165,22 @@ document.getElementById('data-source-select').addEventListener('change', async f
                 // Enable columns select
                 columnsSelect.disabled = false;
 
+                // Remove existing event listeners
+                const newColumnsSelect = columnsSelect.cloneNode(true);
+                columnsSelect.parentNode.replaceChild(newColumnsSelect, columnsSelect);
+
                 // Add event listener for column selection
-                columnsSelect.addEventListener('change', function() {
+                newColumnsSelect.addEventListener('change', function() {
                     const selectedColumns = Array.from(this.selectedOptions);
+                    console.log('Selected columns:', selectedColumns); // Debug log
+                    selectedColumns.forEach(col => {
+                        console.log('Column type for', col.value, ':', col.dataset.type); // Debug log
+                    });
                     const chartType = document.getElementById('chart-type-select').value;
                     
                     // Проверяем совместимость выбранных колонок с типом графика
                     const isCompatible = checkChartCompatibility(selectedColumns, chartType);
+                    console.log('Chart compatibility:', isCompatible); // Debug log
                     
                     // Обновляем доступные типы графиков
                     updateAvailableChartTypes(selectedColumns);
@@ -1117,182 +1189,6 @@ document.getElementById('data-source-select').addEventListener('change', async f
                     document.getElementById('create-visualization-btn').disabled = 
                         selectedColumns.length === 0 || !chartType || !isCompatible;
                 });
-
-                // Add event listener for chart type selection
-                document.getElementById('chart-type-select').addEventListener('change', function() {
-                    const selectedColumns = Array.from(columnsSelect.selectedOptions);
-                    const isCompatible = checkChartCompatibility(selectedColumns, this.value);
-                    document.getElementById('create-visualization-btn').disabled = 
-                        selectedColumns.length === 0 || !this.value || !isCompatible;
-                });
-
-                // Функция для проверки совместимости колонок с типом графика
-                function checkChartCompatibility(selectedColumns, chartType) {
-                    if (!selectedColumns.length || !chartType) return false;
-
-                    const columnTypes = selectedColumns.map(col => col.dataset.type.toLowerCase());
-                    
-                    switch (chartType) {
-                        case 'table':
-                            return true; // Таблица поддерживает любые типы данных
-                        case 'bar':
-                        case 'line':
-                            // Для bar и line нужны числовые данные
-                            return columnTypes.some(type => 
-                                type.includes('int') || 
-                                type.includes('float') || 
-                                type.includes('double') || 
-                                type.includes('decimal')
-                            );
-                        case 'pie':
-                        case 'doughnut':
-                            // Для pie и doughnut нужны категориальные данные
-                            return columnTypes.some(type => 
-                                type.includes('char') || 
-                                type.includes('text') || 
-                                type.includes('varchar')
-                            );
-                        default:
-                            return false;
-                    }
-                }
-
-                // Функция для обновления доступных типов графиков
-                function updateAvailableChartTypes(selectedColumns) {
-                    const chartTypeSelect = document.getElementById('chart-type-select');
-                    const columnTypes = selectedColumns.map(col => col.dataset.type.toLowerCase());
-                    
-                    // Всегда доступна таблица
-                    chartTypeSelect.innerHTML = '<option value="">Select Chart Type</option><option value="table">Table</option>';
-                    
-                    // Проверяем наличие числовых данных для bar и line
-                    const hasNumericData = columnTypes.some(type => 
-                        type.includes('int') || 
-                        type.includes('float') || 
-                        type.includes('double') || 
-        type.includes('decimal')
-                    );
-                    
-                    if (hasNumericData) {
-                        chartTypeSelect.innerHTML += '<option value="bar">Bar Chart</option><option value="line">Line Chart</option>';
-                    }
-                    
-                    // Проверяем наличие категориальных данных для pie и doughnut
-                    const hasCategoricalData = columnTypes.some(type => 
-                        type.includes('char') || 
-                        type.includes('text') || 
-                        type.includes('varchar')
-                    );
-                    
-                    if (hasCategoricalData) {
-                        chartTypeSelect.innerHTML += '<option value="pie">Pie Chart</option><option value="doughnut">Doughnut Chart</option>';
-                    }
-                }
-
-                // Add event listener for create visualization button
-                document.getElementById('create-visualization-btn').addEventListener('click', async function() {
-                    const selectedTable = tableSelect.value;
-                    const selectedColumns = Array.from(columnsSelect.selectedOptions).map(option => option.value);
-                    const chartType = document.getElementById('chart-type-select').value;
-
-                    if (!selectedTable || selectedColumns.length === 0 || !chartType) {
-                        showMessage('Please select a table, columns and chart type', 'error');
-                        return;
-                    }
-
-                    try {
-                        // Проверяем, есть ли данные в кэше
-                        const cacheKey = `${dataSourceId}_${selectedTable}_${selectedColumns.join('_')}`;
-                        let data;
-                        
-                        if (window.visualizationCache && window.visualizationCache[cacheKey]) {
-                            data = window.visualizationCache[cacheKey];
-                        } else {
-                            const response = await fetch('/api/data-sources/table-data', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${token}`,
-                                    'Accept': 'application/json'
-                                },
-                                body: JSON.stringify({
-                                    data_source_id: dataSourceId,
-                                    table_name: selectedTable,
-                                    columns: selectedColumns,
-                                    limit: 1000 // Ограничиваем количество записей для производительности
-                                })
-                            });
-
-                            if (!response.ok) {
-                                throw new Error('Failed to get table data');
-                            }
-
-                            const result = await response.json();
-                            if (!result.success) {
-                                throw new Error(result.message);
-                            }
-
-                            data = result.data;
-                            
-                            // Сохраняем данные в кэш
-                            if (!window.visualizationCache) {
-                                window.visualizationCache = {};
-                            }
-                            window.visualizationCache[cacheKey] = data;
-                        }
-
-                        // Create visualization
-                        const container = document.createElement('div');
-                        container.className = 'chart-container';
-                        document.getElementById('visualization-container').appendChild(container);
-
-                        if (chartType === 'table') {
-                            createTableVisualization(container, data);
-                        } else {
-                            createChartVisualization(container, data, chartType);
-                        }
-
-                    } catch (error) {
-                        console.error('Error:', error);
-                        showMessage('Failed to create visualization: ' + error.message, 'error');
-                    }
-                });
-
-                // Функция для создания табличной визуализации
-                function createTableVisualization(container, data) {
-                    const table = document.createElement('table');
-                    table.className = 'data-table';
-                    
-                    // Create header
-                    const thead = document.createElement('thead');
-                    const headerRow = document.createElement('tr');
-                    
-                    // Get columns from first row if not provided
-                    const columns = data.columns || Object.keys(data.rows[0] || {}).map(name => ({ name }));
-                    
-                    columns.forEach(column => {
-                        const th = document.createElement('th');
-                        th.textContent = column.name;
-                        headerRow.appendChild(th);
-                    });
-                    thead.appendChild(headerRow);
-                    table.appendChild(thead);
-                    
-                    // Create body
-                    const tbody = document.createElement('tbody');
-                    data.rows.forEach(row => {
-                        const tr = document.createElement('tr');
-                        columns.forEach(column => {
-                            const td = document.createElement('td');
-                            td.textContent = row[column.name] ?? '';
-                            tr.appendChild(td);
-                        });
-                        tbody.appendChild(tr);
-                    });
-                    table.appendChild(tbody);
-                    
-                    container.appendChild(table);
-                }
 
             } catch (error) {
                 console.error('Error:', error);
@@ -1306,58 +1202,93 @@ document.getElementById('data-source-select').addEventListener('change', async f
     }
 });
 
-// Handle visualization creation
-document.getElementById('create-visualization-btn').addEventListener('click', async function() {
-    const dataSourceId = document.getElementById('data-source-select').value;
-    const table = document.getElementById('table-select').value;
-    const chartType = document.getElementById('chart-type-select').value;
+// Функция для проверки совместимости колонок с типом графика
+function checkChartCompatibility(selectedColumns, chartType) {
+    if (!selectedColumns.length || !chartType) return false;
 
-    if (!dataSourceId || !table || !chartType) {
-        showMessage('Please select all required fields', 'error');
-        return;
-    }
+    // Для таблицы всегда возвращаем true
+    if (chartType === 'table') return true;
 
-    try {
-        // Get table columns
-        const token = localStorage.getItem('token');
-        const response = await fetch('/api/data-sources/table-data', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({
-                id: dataSourceId,
-                table: table,
-                columns: ['*'],
-                limit: 1
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to get table structure');
+    // Получаем типы колонок из их значений
+    const columnTypes = selectedColumns.map(col => {
+        // Получаем тип из dataset
+        const type = col.dataset.type;
+        console.log('Column type from dataset:', type); // Debug log
+        if (type) {
+            return type.toLowerCase();
         }
-
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error(result.message);
-        }
-
-        // Get column names from the first row
-        const columns = Object.keys(result.data[0]);
-
-        // Create visualization
-        await createVisualization(dataSourceId, table, columns, chartType, {
-            title: `${table} - ${chartType} Chart`,
-            limit: 100
-        });
-
-    } catch (error) {
-        console.error('Error:', error);
-        showMessage('Failed to create visualization: ' + error.message, 'error');
+        // Если тип не указан, предполагаем что это числовой тип
+        return 'numeric';
+    });
+    
+    console.log('Column types:', columnTypes); // Debug log
+    
+    switch (chartType) {
+        case 'bar':
+        case 'line':
+            // Для bar и line нужны числовые данные
+            return columnTypes.some(type => 
+                type === 'numeric' ||
+                type.includes('int') || 
+                type.includes('float') || 
+                type.includes('double') || 
+                type.includes('decimal')
+            );
+        case 'pie':
+        case 'doughnut':
+            // Для pie и doughnut нужны категориальные данные
+            return columnTypes.some(type => 
+                type === 'string' ||
+                type.includes('char') || 
+                type.includes('text') || 
+                type.includes('varchar')
+            );
+        default:
+            return false;
     }
-});
+}
+
+// Функция для обновления доступных типов графиков
+function updateAvailableChartTypes(selectedColumns) {
+    const chartTypeSelect = document.getElementById('chart-type-select');
+    
+    // Всегда доступна таблица
+    chartTypeSelect.innerHTML = '<option value="">Select Chart Type</option><option value="table">Table</option>';
+    
+    // Получаем типы колонок
+    const columnTypes = selectedColumns.map(col => {
+        const type = col.dataset.type;
+        console.log('Column type in updateAvailableChartTypes:', type); // Debug log
+        return type ? type.toLowerCase() : 'numeric';
+    });
+    
+    console.log('Column types in updateAvailableChartTypes:', columnTypes); // Debug log
+    
+    // Проверяем наличие числовых данных для bar и line
+    const hasNumericData = columnTypes.some(type => 
+        type === 'numeric' ||
+        type.includes('int') || 
+        type.includes('float') || 
+        type.includes('double') || 
+        type.includes('decimal')
+    );
+    
+    if (hasNumericData) {
+        chartTypeSelect.innerHTML += '<option value="bar">Bar Chart</option><option value="line">Line Chart</option>';
+    }
+    
+    // Проверяем наличие категориальных данных для pie и doughnut
+    const hasCategoricalData = columnTypes.some(type => 
+        type === 'string' ||
+        type.includes('char') || 
+        type.includes('text') || 
+        type.includes('varchar')
+    );
+    
+    if (hasCategoricalData) {
+        chartTypeSelect.innerHTML += '<option value="pie">Pie Chart</option><option value="doughnut">Doughnut Chart</option>';
+    }
+}
 
 async function loadTableData(dataSourceId, tableName) {
     try {
@@ -1367,6 +1298,10 @@ async function loadTableData(dataSourceId, tableName) {
             return;
         }
 
+        if (!dataSourceId || !tableName) {
+            throw new Error('Data source ID and table name are required');
+        }
+
         const response = await fetch('/api/data-sources/table-data', {
             method: 'POST',
             headers: {
@@ -1375,8 +1310,9 @@ async function loadTableData(dataSourceId, tableName) {
                 'Accept': 'application/json'
             },
             body: JSON.stringify({
-                data_source_id: dataSourceId,
-                table_name: tableName
+                id: dataSourceId,
+                table: tableName,
+                columns: ['*']
             })
         });
 
@@ -1396,263 +1332,6 @@ async function loadTableData(dataSourceId, tableName) {
         return null;
     }
 }
-
-function createTableVisualization(container, data) {
-    const table = document.createElement('table');
-    table.className = 'data-table';
-    
-    // Create header
-    const thead = document.createElement('thead');
-    const headerRow = document.createElement('tr');
-    
-    // Get columns from first row if not provided
-    const columns = data.columns || Object.keys(data.rows[0] || {}).map(name => ({ name }));
-    
-    columns.forEach(column => {
-        const th = document.createElement('th');
-        th.textContent = column.name;
-        headerRow.appendChild(th);
-    });
-    thead.appendChild(headerRow);
-    table.appendChild(thead);
-    
-    // Create body
-    const tbody = document.createElement('tbody');
-    data.rows.forEach(row => {
-        const tr = document.createElement('tr');
-        columns.forEach(column => {
-            const td = document.createElement('td');
-            td.textContent = row[column.name] ?? '';
-            tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-    
-    container.appendChild(table);
-}
-
-function createChartVisualization(container, data, chartType) {
-    const canvas = document.createElement('canvas');
-    container.appendChild(canvas);
-
-    const xAxisColumn = document.getElementById('columns-select').value;
-    const yAxisColumn = document.getElementById('y-axis-select').value;
-
-    // Helper function to safely convert values
-    const safeConvert = (value) => {
-        if (value === null || value === undefined) return '';
-        if (typeof value === 'number') return value;
-        if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-        if (value instanceof Date) return value.toLocaleDateString();
-        return String(value);
-    };
-
-    // Helper function to aggregate data for pie/doughnut charts
-    const aggregateData = (rows, labelKey, valueKey) => {
-        const aggregated = {};
-        rows.forEach(row => {
-            const label = safeConvert(row[labelKey]);
-            const value = parseFloat(row[valueKey]) || 0;
-            aggregated[label] = (aggregated[label] || 0) + value;
-        });
-        return {
-            labels: Object.keys(aggregated),
-            values: Object.values(aggregated)
-        };
-    };
-
-    // Prepare data for chart
-    let labels, values, backgroundColor;
-
-    if (chartType === 'pie' || chartType === 'doughnut') {
-        // For pie/doughnut charts, aggregate data by x-axis values
-        const aggregated = aggregateData(data.rows, xAxisColumn, yAxisColumn);
-        labels = aggregated.labels;
-        values = aggregated.values;
-        backgroundColor = labels.map(() => getRandomColor());
-    } else {
-        // For other charts, process data based on type
-        labels = data.rows.map(row => safeConvert(row[xAxisColumn]));
-        
-        // Try to convert values to numbers for better visualization
-        values = data.rows.map(row => {
-            const val = row[yAxisColumn];
-            if (typeof val === 'number') return val;
-            if (typeof val === 'string') {
-                const num = parseFloat(val);
-                return isNaN(num) ? 0 : num;
-            }
-            return 0;
-        });
-
-        // For line and bar charts, use different colors for each data point
-        if (chartType === 'line' || chartType === 'bar') {
-            backgroundColor = values.map(() => getRandomColor());
-        } else {
-            backgroundColor = getRandomColor();
-        }
-    }
-
-    // Create chart
-    new Chart(canvas, {
-        type: chartType,
-        data: {
-            labels: labels,
-            datasets: [{
-                label: yAxisColumn,
-                data: values,
-                backgroundColor: backgroundColor,
-                borderColor: chartType === 'pie' || chartType === 'doughnut' ? backgroundColor : getRandomColor(),
-                borderWidth: 1,
-                fill: chartType === 'line' ? false : true,
-                tension: chartType === 'line' ? 0.4 : 0
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'top',
-                },
-                title: {
-                    display: true,
-                    text: `${yAxisColumn} by ${xAxisColumn}`
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            let label = context.dataset.label || '';
-                            if (label) {
-                                label += ': ';
-                            }
-                            if (context.parsed.y !== undefined) {
-                                label += context.parsed.y.toLocaleString();
-                            } else if (context.parsed !== undefined) {
-                                label += context.parsed.toLocaleString();
-                            }
-                            return label;
-                        }
-                    }
-                }
-            },
-            scales: chartType === 'pie' || chartType === 'doughnut' ? {} : {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        callback: function(value) {
-                            return value.toLocaleString();
-                        }
-                    }
-                },
-                x: {
-                    ticks: {
-                        callback: function(value, index) {
-                            const label = this.getLabelForValue(value);
-                            return label.length > 10 ? label.substr(0, 10) + '...' : label;
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
-
-// Update the createVisualization function
-async function createVisualization() {
-    const dataSourceId = document.getElementById('data-source-select').value;
-    const tableName = document.getElementById('table-select').value;
-    const xAxisColumn = document.getElementById('columns-select').value;
-    const yAxisColumn = document.getElementById('y-axis-select').value;
-    const chartType = document.getElementById('chart-type-select').value;
-
-    if (!dataSourceId || !tableName) {
-        showMessage('Data source ID and table name are required', 'error');
-        return;
-    }
-
-    if (!xAxisColumn || !yAxisColumn) {
-        showMessage('Please select both X-axis and Y-axis columns', 'error');
-        return;
-    }
-
-    if (!chartType) {
-        showMessage('Please select a chart type', 'error');
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/data-sources/table-data', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + localStorage.getItem('token')
-            },
-            body: JSON.stringify({
-                data_source_id: dataSourceId,
-                table_name: tableName,
-                columns: [xAxisColumn, yAxisColumn],
-                limit: 1000
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to get table data');
-        }
-
-        const responseText = await response.text();
-        console.log('Table data response:', responseText); // Debug log
-
-        let result;
-        try {
-            result = JSON.parse(responseText);
-        } catch (e) {
-            console.error('JSON parse error:', e);
-            throw new Error('Invalid JSON response from server');
-        }
-
-        if (!result.success) {
-            throw new Error(result.message || 'Failed to get table data');
-        }
-
-        if (!result.data || !result.data.rows) {
-            console.error('Invalid data structure:', result);
-            throw new Error('Invalid data structure received from server');
-        }
-
-        // Create visualization container
-        const container = document.createElement('div');
-        container.className = 'visualization-item';
-        container.innerHTML = `
-            <div class="visualization-header">
-                <h3>${tableName}</h3>
-                <button onclick="this.parentElement.parentElement.remove()" class="delete-btn">Delete</button>
-            </div>
-            <div class="visualization-content"></div>
-        `;
-
-        document.getElementById('visualization-container').appendChild(container);
-        const contentContainer = container.querySelector('.visualization-content');
-
-        if (chartType === 'table') {
-            createTableVisualization(contentContainer, result.data);
-        } else {
-            createChartVisualization(contentContainer, result.data, chartType);
-        }
-
-    } catch (error) {
-        console.error('Error creating visualization:', error);
-        showMessage(error.message, 'error');
-    }
-}
-
-// Update the table select change handler
-document.getElementById('table-select').addEventListener('change', function() {
-    const chartTypeSelect = document.getElementById('chart-type-select');
-    chartTypeSelect.disabled = !this.value;
-    document.getElementById('create-visualization-btn').disabled = !this.value;
-});
 
 function showDashboard() {
     // Hide all sections

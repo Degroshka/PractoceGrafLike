@@ -58,6 +58,7 @@ class DataSource extends Model
             PDO::ATTR_EMULATE_PREPARES => false,
         ];
         
+        // Only add SSL options if explicitly enabled
         if ($this->use_ssl) {
             $options[PDO::MYSQL_ATTR_SSL_CA] = '/path/to/ca.pem';
             $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = true;
@@ -70,11 +71,24 @@ class DataSource extends Model
     {
         switch ($this->type) {
             case 'mysql':
-                return "mysql:host={$this->host};port={$this->port};dbname={$this->db_name};charset=utf8mb4";
+                return "mysql:host={$this->host};port={$this->port};dbname={$this->db_name};charset=utf8mb4;ssl-mode=DISABLED";
             case 'postgresql':
                 return "pgsql:host={$this->host};port={$this->port};dbname={$this->db_name}";
             default:
                 throw new \Exception("Unsupported database type: {$this->type}");
         }
+    }
+
+    public function getConnectionConfig()
+    {
+        return [
+            'type' => $this->type,
+            'host' => $this->host,
+            'port' => $this->port,
+            'database' => $this->db_name,
+            'username' => $this->username,
+            'password' => $this->password,
+            'use_ssl' => $this->use_ssl
+        ];
     }
 } 

@@ -149,15 +149,43 @@ class DataSourceController extends BaseController
                 return $this->respondWithError($response, 'Data source not found', 404);
             }
 
-            // Convert to array and ensure all required fields are present
-            $config = $dataSource->toArray();
-            $config['database'] = $config['db_name']; // Add database field for backward compatibility
+            // Get request data
+            $data = $request->getParsedBody();
+            $includePassword = $data['include_password'] ?? false;
 
-            $db = new Database($config);
+            // Add debug logging
+            error_log('TestConnection config: ' . json_encode([
+                'host' => $dataSource->host,
+                'port' => $dataSource->port,
+                'database' => $dataSource->db_name,
+                'username' => $dataSource->username,
+                'password_length' => strlen($dataSource->password ?? ''),
+                'type' => $dataSource->type,
+                'use_ssl' => $dataSource->use_ssl,
+                'include_password' => $includePassword
+            ]));
+
+            // Ensure password is set
+            if (empty($dataSource->password)) {
+                return $this->respondWithError($response, 'Password is required for connection test');
+            }
+
+            // Create database connection
+            $db = new Database([
+                'type' => $dataSource->type,
+                'host' => $dataSource->host,
+                'port' => $dataSource->port,
+                'database' => $dataSource->db_name,
+                'username' => $dataSource->username,
+                'password' => $dataSource->password,
+                'use_ssl' => false // Explicitly disable SSL for testing
+            ]);
+            
             $db->connect();
 
             return $this->respondWithData($response, ['message' => 'Connection successful']);
         } catch (\Exception $e) {
+            error_log('TestConnection error: ' . $e->getMessage());
             return $this->respondWithError($response, 'Connection failed: ' . $e->getMessage());
         }
     }

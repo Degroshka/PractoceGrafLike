@@ -71,14 +71,17 @@ $app->add(function (Request $request, $handler) {
 // Add routes
 $app->group('/api', function (RouteCollectorProxy $group) {
     // Auth routes
-    $group->post('/auth/register', 'App\Controllers\AuthController:register');
-    $group->post('/auth/login', 'App\Controllers\AuthController:login');
+    $group->group('/auth', function (RouteCollectorProxy $group) {
+        $group->post('/register', 'App\Controllers\AuthController:register');
+        $group->post('/login', 'App\Controllers\AuthController:login');
+    });
 
     // Data source routes
-    $group->get('/data-sources', 'App\Controllers\DataSourceController:index');
+    $group->get('/data-sources', 'App\Controllers\DataSourceController:list');
+    $group->get('/data-sources/{id}', 'App\Controllers\DataSourceController:show');
     $group->post('/data-sources', 'App\Controllers\DataSourceController:create');
     $group->delete('/data-sources/{id}', 'App\Controllers\DataSourceController:delete');
-    $group->post('/data-sources/test-connection', 'App\Controllers\DataSourceController:testConnection');
+    $group->post('/data-sources/{id}/test', 'App\Controllers\DataSourceController:testConnection');
     $group->post('/data-sources/tables', 'App\Controllers\DataSourceController:getTables');
     $group->post('/data-sources/table-structure', 'App\Controllers\DataSourceController:getTableStructure');
     $group->post('/data-sources/table-data', 'App\Controllers\DataSourceController:getTableData');
