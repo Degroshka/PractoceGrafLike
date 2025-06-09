@@ -601,10 +601,16 @@ async function viewDashboard(id) {
         document.getElementById('table-select').onchange = async function() {
             const columnsSelect = document.getElementById('columns-select');
             const yAxisSelect = document.getElementById('y-axis-select');
+            const chartTypeSelect = document.getElementById('chart-type-select');
+            const createBtn = document.getElementById('create-visualization-btn');
+            
             columnsSelect.disabled = !this.value;
             yAxisSelect.disabled = !this.value;
-            columnsSelect.innerHTML = '';
-            yAxisSelect.innerHTML = '';
+            chartTypeSelect.disabled = !this.value;
+            createBtn.disabled = !this.value;
+            
+            columnsSelect.innerHTML = '<option value="">Select X-axis Column</option>';
+            yAxisSelect.innerHTML = '<option value="">Select Y-axis Column</option>';
             
             if (this.value) {
                 try {
@@ -626,29 +632,40 @@ async function viewDashboard(id) {
 
                     const result = await response.json();
                     if (!result.success) {
-                        throw new Error(result.message);
+                        throw new Error(result.message || 'Failed to load table structure');
                     }
 
                     // Add columns to both selects
-                    result.data.forEach(column => {
-                        // Add to X-axis select (multiple selection)
-                        const option = document.createElement('option');
-                        option.value = column.column_name;
-                        option.textContent = `${column.column_name} (${column.data_type})`;
-                        option.dataset.type = column.data_type;
-                        columnsSelect.appendChild(option);
+                    if (result.data && Array.isArray(result.data)) {
+                        result.data.forEach(column => {
+                            if (!column.name || !column.type) {
+                                console.warn('Invalid column data:', column);
+                                return;
+                            }
 
-                        // Add to Y-axis select (single selection)
-                        const yOption = document.createElement('option');
-                        yOption.value = column.column_name;
-                        yOption.textContent = `${column.column_name} (${column.data_type})`;
-                        yOption.dataset.type = column.data_type;
-                        yAxisSelect.appendChild(yOption);
-                    });
+                            // Add to X-axis select
+                            const option = document.createElement('option');
+                            option.value = column.name;
+                            option.textContent = `${column.name} (${column.type})`;
+                            option.dataset.type = column.type;
+                            columnsSelect.appendChild(option);
 
-                    // Enable both selects
-                    columnsSelect.disabled = false;
-                    yAxisSelect.disabled = false;
+                            // Add to Y-axis select
+                            const yOption = document.createElement('option');
+                            yOption.value = column.name;
+                            yOption.textContent = `${column.name} (${column.type})`;
+                            yOption.dataset.type = column.type;
+                            yAxisSelect.appendChild(yOption);
+                        });
+
+                        // Enable selects
+                        columnsSelect.disabled = false;
+                        yAxisSelect.disabled = false;
+                        chartTypeSelect.disabled = false;
+                    } else {
+                        console.error('Invalid data structure:', result.data);
+                        throw new Error('Invalid column data structure received from server');
+                    }
                 } catch (error) {
                     console.error('Error loading table structure:', error);
                     showMessage(error.message, 'error');
@@ -736,6 +753,7 @@ async function createVisualization(dataSourceId, table, columns, type, options =
             body: JSON.stringify({
                 data_source_id: dataSourceId,
                 table_name: table,
+                columns: columns,
                 limit: 0 // Get all data
             })
         });
@@ -759,14 +777,49 @@ async function createVisualization(dataSourceId, table, columns, type, options =
         const ctx = document.createElement('canvas');
         chartContainer.appendChild(ctx);
 
-        // Prepare data based on visualization type
-        const chartData = prepareChartData(result.data.rows, columns, type, options);
+        // Get selected columns
+        const xAxisColumn = document.getElementById('columns-select').value;
+        const yAxisColumn = document.getElementById('y-axis-select').value;
+
+        if (!xAxisColumn || !yAxisColumn) {
+            throw new Error('Please select both X-axis and Y-axis columns');
+        }
+
+        // Prepare data for chart
+        const labels = result.data.rows.map(row => row[xAxisColumn]);
+        const values = result.data.rows.map(row => row[yAxisColumn]);
 
         // Create chart
         new Chart(ctx, {
             type: type,
-            data: chartData,
-            options: getChartOptions(type, options)
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: yAxisColumn,
+                    data: values,
+                    backgroundColor: getRandomColor(),
+                    borderColor: getRandomColor(),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                    title: {
+                        display: true,
+                        text: `${yAxisColumn} by ${xAxisColumn}`
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
         });
 
     } catch (error) {
@@ -1171,7 +1224,7 @@ document.getElementById('data-source-select').addEventListener('change', async f
                         const tr = document.createElement('tr');
                         data.columns.forEach(column => {
                             const td = document.createElement('td');
-                            td.textContent = row[column.name];
+                            td.textContent = row[column.name] ?? '';
                             tr.appendChild(td);
                         });
                         tbody.appendChild(tr);
@@ -1186,22 +1239,12 @@ document.getElementById('data-source-select').addEventListener('change', async f
                     const canvas = document.createElement('canvas');
                     container.appendChild(canvas);
 
-                    // Get selected columns
-                    const selectedColumns = Array.from(document.getElementById('columns-select').selectedOptions);
+                    const xAxisColumn = document.getElementById('columns-select').value;
                     const yAxisColumn = document.getElementById('y-axis-select').value;
 
-                    if (selectedColumns.length === 0 || !yAxisColumn) {
-                        showMessage('Please select at least one column for X-axis and one column for Y-axis', 'error');
-                        return;
-                    }
-
-                    // Use first selected column for X-axis labels and Y-axis column for data
-                    const labelColumn = selectedColumns[0].value;
-                    const dataColumn = yAxisColumn;
-
                     // Prepare data for chart
-                    const labels = data.rows.map(row => row[labelColumn]);
-                    const values = data.rows.map(row => row[dataColumn]);
+                    const labels = data.rows.map(row => row[xAxisColumn]);
+                    const values = data.rows.map(row => row[yAxisColumn]);
 
                     // Create chart
                     new Chart(canvas, {
@@ -1209,7 +1252,7 @@ document.getElementById('data-source-select').addEventListener('change', async f
                         data: {
                             labels: labels,
                             datasets: [{
-                                label: dataColumn,
+                                label: yAxisColumn,
                                 data: values,
                                 backgroundColor: getRandomColor(),
                                 borderColor: getRandomColor(),
@@ -1225,7 +1268,7 @@ document.getElementById('data-source-select').addEventListener('change', async f
                                 },
                                 title: {
                                     display: true,
-                                    text: `${dataColumn} by ${labelColumn}`
+                                    text: `${yAxisColumn} by ${xAxisColumn}`
                                 }
                             },
                             scales: {
@@ -1343,56 +1386,44 @@ async function loadTableData(dataSourceId, tableName) {
 function createTableVisualization(container, data) {
     const table = document.createElement('table');
     table.className = 'data-table';
-
+    
     // Create header
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
     data.columns.forEach(column => {
         const th = document.createElement('th');
-        th.textContent = column.column_name;
+        th.textContent = column.name;
         headerRow.appendChild(th);
     });
     thead.appendChild(headerRow);
     table.appendChild(thead);
-
+    
     // Create body
     const tbody = document.createElement('tbody');
     data.rows.forEach(row => {
         const tr = document.createElement('tr');
         data.columns.forEach(column => {
             const td = document.createElement('td');
-            td.textContent = row[column.column_name] ?? '';
+            td.textContent = row[column.name] ?? '';
             tr.appendChild(td);
         });
         tbody.appendChild(tr);
     });
     table.appendChild(tbody);
-
-    container.innerHTML = '';
+    
     container.appendChild(table);
 }
 
 function createChartVisualization(container, data, chartType) {
     const canvas = document.createElement('canvas');
-    container.innerHTML = '';
     container.appendChild(canvas);
 
-    // Get selected columns
-    const selectedColumns = Array.from(document.getElementById('columns-select').selectedOptions);
+    const xAxisColumn = document.getElementById('columns-select').value;
     const yAxisColumn = document.getElementById('y-axis-select').value;
 
-    if (selectedColumns.length === 0 || !yAxisColumn) {
-        showMessage('Please select at least one column for X-axis and one column for Y-axis', 'error');
-        return;
-    }
-
-    // Use first selected column for X-axis labels and Y-axis column for data
-    const labelColumn = selectedColumns[0].value;
-    const dataColumn = yAxisColumn;
-
     // Prepare data for chart
-    const labels = data.rows.map(row => row[labelColumn]);
-    const values = data.rows.map(row => row[dataColumn]);
+    const labels = data.rows.map(row => row[xAxisColumn]);
+    const values = data.rows.map(row => row[yAxisColumn]);
 
     // Create chart
     new Chart(canvas, {
@@ -1400,7 +1431,7 @@ function createChartVisualization(container, data, chartType) {
         data: {
             labels: labels,
             datasets: [{
-                label: dataColumn,
+                label: yAxisColumn,
                 data: values,
                 backgroundColor: getRandomColor(),
                 borderColor: getRandomColor(),
@@ -1416,7 +1447,7 @@ function createChartVisualization(container, data, chartType) {
                 },
                 title: {
                     display: true,
-                    text: `${dataColumn} by ${labelColumn}`
+                    text: `${yAxisColumn} by ${xAxisColumn}`
                 }
             },
             scales: {
@@ -1432,33 +1463,87 @@ function createChartVisualization(container, data, chartType) {
 async function createVisualization() {
     const dataSourceId = document.getElementById('data-source-select').value;
     const tableName = document.getElementById('table-select').value;
+    const xAxisColumn = document.getElementById('columns-select').value;
+    const yAxisColumn = document.getElementById('y-axis-select').value;
     const chartType = document.getElementById('chart-type-select').value;
 
-    if (!dataSourceId || !tableName || !chartType) {
-        showMessage('Please select all required fields', 'error');
+    if (!dataSourceId || !tableName) {
+        showMessage('Data source ID and table name are required', 'error');
         return;
     }
 
-    const data = await loadTableData(dataSourceId, tableName);
-    if (!data) return;
+    if (!xAxisColumn || !yAxisColumn) {
+        showMessage('Please select both X-axis and Y-axis columns', 'error');
+        return;
+    }
 
-    const container = document.createElement('div');
-    container.className = 'visualization-item';
-    container.innerHTML = `
-        <div class="visualization-header">
-            <h3>${tableName}</h3>
-            <button onclick="this.parentElement.parentElement.remove()" class="delete-btn">Delete</button>
-        </div>
-        <div class="visualization-content"></div>
-    `;
+    if (!chartType) {
+        showMessage('Please select a chart type', 'error');
+        return;
+    }
 
-    document.getElementById('visualization-container').appendChild(container);
+    try {
+        const response = await fetch('/api/data-sources/table-data', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + localStorage.getItem('token')
+            },
+            body: JSON.stringify({
+                data_source_id: dataSourceId,
+                table_name: tableName,
+                columns: [xAxisColumn, yAxisColumn],
+                limit: 1000
+            })
+        });
 
-    const contentContainer = container.querySelector('.visualization-content');
-    if (chartType === 'table') {
-        createTableVisualization(contentContainer, data);
-    } else {
-        createChartVisualization(contentContainer, data, chartType);
+        if (!response.ok) {
+            throw new Error('Failed to get table data');
+        }
+
+        const responseText = await response.text();
+        console.log('Table data response:', responseText); // Debug log
+
+        let result;
+        try {
+            result = JSON.parse(responseText);
+        } catch (e) {
+            console.error('JSON parse error:', e);
+            throw new Error('Invalid JSON response from server');
+        }
+
+        if (!result.success) {
+            throw new Error(result.message || 'Failed to get table data');
+        }
+
+        if (!result.data || !result.data.rows) {
+            console.error('Invalid data structure:', result);
+            throw new Error('Invalid data structure received from server');
+        }
+
+        // Create visualization container
+        const container = document.createElement('div');
+        container.className = 'visualization-item';
+        container.innerHTML = `
+            <div class="visualization-header">
+                <h3>${tableName}</h3>
+                <button onclick="this.parentElement.parentElement.remove()" class="delete-btn">Delete</button>
+            </div>
+            <div class="visualization-content"></div>
+        `;
+
+        document.getElementById('visualization-container').appendChild(container);
+        const contentContainer = container.querySelector('.visualization-content');
+
+        if (chartType === 'table') {
+            createTableVisualization(contentContainer, result.data);
+        } else {
+            createChartVisualization(contentContainer, result.data, chartType);
+        }
+
+    } catch (error) {
+        console.error('Error creating visualization:', error);
+        showMessage(error.message, 'error');
     }
 }
 
