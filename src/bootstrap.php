@@ -71,8 +71,8 @@ $app->add(function (Request $request, $handler) {
 // Add routes
 $app->group('/api', function (RouteCollectorProxy $group) {
     // Auth routes
-    $group->post('/register', 'App\Controllers\AuthController:register');
-    $group->post('/login', 'App\Controllers\AuthController:login');
+    $group->post('/auth/register', 'App\Controllers\AuthController:register');
+    $group->post('/auth/login', 'App\Controllers\AuthController:login');
 
     // Data source routes
     $group->get('/data-sources', 'App\Controllers\DataSourceController:index');
