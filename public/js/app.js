@@ -1210,7 +1210,11 @@ document.getElementById('data-source-select').addEventListener('change', async f
                     // Create header
                     const thead = document.createElement('thead');
                     const headerRow = document.createElement('tr');
-                    data.columns.forEach(column => {
+                    
+                    // Get columns from first row if not provided
+                    const columns = data.columns || Object.keys(data.rows[0] || {}).map(name => ({ name }));
+                    
+                    columns.forEach(column => {
                         const th = document.createElement('th');
                         th.textContent = column.name;
                         headerRow.appendChild(th);
@@ -1222,7 +1226,7 @@ document.getElementById('data-source-select').addEventListener('change', async f
                     const tbody = document.createElement('tbody');
                     data.rows.forEach(row => {
                         const tr = document.createElement('tr');
-                        data.columns.forEach(column => {
+                        columns.forEach(column => {
                             const td = document.createElement('td');
                             td.textContent = row[column.name] ?? '';
                             tr.appendChild(td);
@@ -1242,9 +1246,23 @@ document.getElementById('data-source-select').addEventListener('change', async f
                     const xAxisColumn = document.getElementById('columns-select').value;
                     const yAxisColumn = document.getElementById('y-axis-select').value;
 
+                    // Get columns from first row if not provided
+                    const columns = data.columns || Object.keys(data.rows[0] || {}).map(name => ({ name }));
+
                     // Prepare data for chart
-                    const labels = data.rows.map(row => row[xAxisColumn]);
-                    const values = data.rows.map(row => row[yAxisColumn]);
+                    let labels, values, backgroundColor;
+
+                    if (chartType === 'pie' || chartType === 'doughnut') {
+                        // For pie/doughnut charts, use the first column for labels and second for values
+                        labels = data.rows.map(row => row[xAxisColumn]);
+                        values = data.rows.map(row => row[yAxisColumn]);
+                        backgroundColor = labels.map(() => getRandomColor());
+                    } else {
+                        // For other charts, use selected columns
+                        labels = data.rows.map(row => row[xAxisColumn]);
+                        values = data.rows.map(row => row[yAxisColumn]);
+                        backgroundColor = getRandomColor();
+                    }
 
                     // Create chart
                     new Chart(canvas, {
@@ -1254,8 +1272,8 @@ document.getElementById('data-source-select').addEventListener('change', async f
                             datasets: [{
                                 label: yAxisColumn,
                                 data: values,
-                                backgroundColor: getRandomColor(),
-                                borderColor: getRandomColor(),
+                                backgroundColor: backgroundColor,
+                                borderColor: chartType === 'pie' || chartType === 'doughnut' ? backgroundColor : getRandomColor(),
                                 borderWidth: 1
                             }]
                         },
@@ -1271,7 +1289,7 @@ document.getElementById('data-source-select').addEventListener('change', async f
                                     text: `${yAxisColumn} by ${xAxisColumn}`
                                 }
                             },
-                            scales: {
+                            scales: chartType === 'pie' || chartType === 'doughnut' ? {} : {
                                 y: {
                                     beginAtZero: true
                                 }
@@ -1390,7 +1408,11 @@ function createTableVisualization(container, data) {
     // Create header
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
-    data.columns.forEach(column => {
+    
+    // Get columns from first row if not provided
+    const columns = data.columns || Object.keys(data.rows[0] || {}).map(name => ({ name }));
+    
+    columns.forEach(column => {
         const th = document.createElement('th');
         th.textContent = column.name;
         headerRow.appendChild(th);
@@ -1402,7 +1424,7 @@ function createTableVisualization(container, data) {
     const tbody = document.createElement('tbody');
     data.rows.forEach(row => {
         const tr = document.createElement('tr');
-        data.columns.forEach(column => {
+        columns.forEach(column => {
             const td = document.createElement('td');
             td.textContent = row[column.name] ?? '';
             tr.appendChild(td);
@@ -1421,9 +1443,23 @@ function createChartVisualization(container, data, chartType) {
     const xAxisColumn = document.getElementById('columns-select').value;
     const yAxisColumn = document.getElementById('y-axis-select').value;
 
+    // Get columns from first row if not provided
+    const columns = data.columns || Object.keys(data.rows[0] || {}).map(name => ({ name }));
+
     // Prepare data for chart
-    const labels = data.rows.map(row => row[xAxisColumn]);
-    const values = data.rows.map(row => row[yAxisColumn]);
+    let labels, values, backgroundColor;
+
+    if (chartType === 'pie' || chartType === 'doughnut') {
+        // For pie/doughnut charts, use the first column for labels and second for values
+        labels = data.rows.map(row => row[xAxisColumn]);
+        values = data.rows.map(row => row[yAxisColumn]);
+        backgroundColor = labels.map(() => getRandomColor());
+    } else {
+        // For other charts, use selected columns
+        labels = data.rows.map(row => row[xAxisColumn]);
+        values = data.rows.map(row => row[yAxisColumn]);
+        backgroundColor = getRandomColor();
+    }
 
     // Create chart
     new Chart(canvas, {
@@ -1433,8 +1469,8 @@ function createChartVisualization(container, data, chartType) {
             datasets: [{
                 label: yAxisColumn,
                 data: values,
-                backgroundColor: getRandomColor(),
-                borderColor: getRandomColor(),
+                backgroundColor: backgroundColor,
+                borderColor: chartType === 'pie' || chartType === 'doughnut' ? backgroundColor : getRandomColor(),
                 borderWidth: 1
             }]
         },
@@ -1450,7 +1486,7 @@ function createChartVisualization(container, data, chartType) {
                     text: `${yAxisColumn} by ${xAxisColumn}`
                 }
             },
-            scales: {
+            scales: chartType === 'pie' || chartType === 'doughnut' ? {} : {
                 y: {
                     beginAtZero: true
                 }
