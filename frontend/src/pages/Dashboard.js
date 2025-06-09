@@ -49,7 +49,7 @@ const Dashboard = () => {
 
     const fetchDataSources = async () => {
         try {
-            const response = await axios.get('/api/datasources');
+            const response = await axios.get('/api/data-sources');
             if (response.data.success) {
                 setDataSources(response.data.data);
             }

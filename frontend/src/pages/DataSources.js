@@ -46,7 +46,7 @@ function DataSources() {
 
   const fetchDataSources = async () => {
     try {
-      const response = await axios.get('/api/datasources');
+      const response = await axios.get('/api/data-sources');
       setDataSources(response.data.dataSources);
     } catch (error) {
       setError('Failed to fetch data sources');
@@ -97,10 +97,10 @@ function DataSources() {
   const handleSubmit = async () => {
     try {
       if (editingDataSource) {
-        await axios.put(`/api/datasources/${editingDataSource.id}`, formData);
+        await axios.put(`/api/data-sources/${editingDataSource.id}`, formData);
         setSuccess('Data source updated successfully');
       } else {
-        await axios.post('/api/datasources', formData);
+        await axios.post('/api/data-sources', formData);
         setSuccess('Data source created successfully');
       }
       handleCloseDialog();
@@ -112,7 +112,7 @@ function DataSources() {
 
   const handleDelete = async (id) => {
     try {
-      await axios.delete(`/api/datasources/${id}`);
+      await axios.delete(`/api/data-sources/${id}`);
       setSuccess('Data source deleted successfully');
       fetchDataSources();
     } catch (error) {

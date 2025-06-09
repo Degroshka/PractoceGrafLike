@@ -7,7 +7,6 @@ use App\Database\Database;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use PDO;
-use PDOException;
 
 class DataSourceController extends BaseController
 {
@@ -17,15 +16,28 @@ class DataSourceController extends BaseController
             $data = $request->getParsedBody();
             
             // Validate required fields
-            $requiredFields = ['name', 'type', 'host', 'port', 'database', 'username', 'password'];
+            $requiredFields = ['name', 'type', 'host', 'port', 'db_name', 'username', 'password'];
             foreach ($requiredFields as $field) {
-                if (empty($data[$field])) {
-                    $response->getBody()->write(json_encode([
-                        'success' => false,
-                        'message' => "Missing required field: {$field}"
-                    ]));
-                    return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                if (!isset($data[$field]) || empty($data[$field])) {
+                    return $this->respondWithError($response, "Missing required field: {$field}", 400);
                 }
+            }
+
+            // Get user_id from token
+            $token = $request->getHeaderLine('Authorization');
+            if (empty($token)) {
+                return $this->respondWithError($response, 'Authorization token is required', 401);
+            }
+
+            $token = str_replace('Bearer ', '', $token);
+            $tokenParts = explode('.', $token);
+            if (count($tokenParts) !== 3) {
+                return $this->respondWithError($response, 'Invalid token format', 401);
+            }
+
+            $payload = json_decode(base64_decode($tokenParts[1]), true);
+            if (!isset($payload['user_id'])) {
+                return $this->respondWithError($response, 'User ID not found in token', 401);
             }
 
             $dataSource = new DataSource();
@@ -33,23 +45,16 @@ class DataSourceController extends BaseController
             $dataSource->type = $data['type'];
             $dataSource->host = $data['host'];
             $dataSource->port = $data['port'];
-            $dataSource->database = $data['database'];
+            $dataSource->db_name = $data['db_name'];
             $dataSource->username = $data['username'];
             $dataSource->password = $data['password'];
-            $dataSource->use_ssl = $data['use_ssl'] ?? false;
+            $dataSource->use_ssl = isset($data['use_ssl']) ? (bool)$data['use_ssl'] : false;
+            $dataSource->user_id = $payload['user_id'];
             $dataSource->save();
 
-            $response->getBody()->write(json_encode([
-                'success' => true,
-                'data' => $dataSource
-            ]));
-            return $response->withHeader('Content-Type', 'application/json');
+            return $this->respondWithData($response, $dataSource, 201);
         } catch (\Exception $e) {
-            $response->getBody()->write(json_encode([
-                'success' => false,
-                'message' => 'Failed to create data source: ' . $e->getMessage()
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            return $this->respondWithError($response, $e->getMessage());
         }
     }
 
@@ -66,18 +71,26 @@ class DataSourceController extends BaseController
     public function index(Request $request, Response $response): Response
     {
         try {
-            $dataSources = DataSource::all();
-            $response->getBody()->write(json_encode([
-                'success' => true,
-                'data' => $dataSources
-            ]));
-            return $response->withHeader('Content-Type', 'application/json');
+            $token = $request->getHeaderLine('Authorization');
+            if (empty($token)) {
+                return $this->respondWithError($response, 'Authorization token is required', 401);
+            }
+
+            $token = str_replace('Bearer ', '', $token);
+            $tokenParts = explode('.', $token);
+            if (count($tokenParts) !== 3) {
+                return $this->respondWithError($response, 'Invalid token format', 401);
+            }
+
+            $payload = json_decode(base64_decode($tokenParts[1]), true);
+            if (!isset($payload['user_id'])) {
+                return $this->respondWithError($response, 'User ID not found in token', 401);
+            }
+
+            $dataSources = DataSource::where('user_id', $payload['user_id'])->get();
+            return $this->respondWithData($response, $dataSources);
         } catch (\Exception $e) {
-            $response->getBody()->write(json_encode([
-                'success' => false,
-                'message' => 'Failed to load data sources: ' . $e->getMessage()
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            return $this->respondWithError($response, $e->getMessage());
         }
     }
 
@@ -118,69 +131,34 @@ class DataSourceController extends BaseController
         try {
             $dataSource = DataSource::find($args['id']);
             if (!$dataSource) {
-                $response->getBody()->write(json_encode([
-                    'success' => false,
-                    'message' => 'Data source not found'
-                ]));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+                return $this->respondWithError($response, 'Data source not found', 404);
             }
 
             $dataSource->delete();
-
-            $response->getBody()->write(json_encode([
-                'success' => true,
-                'message' => 'Data source deleted successfully'
-            ]));
-            return $response->withHeader('Content-Type', 'application/json');
+            return $this->respondWithData($response, ['message' => 'Data source deleted successfully']);
         } catch (\Exception $e) {
-            $response->getBody()->write(json_encode([
-                'success' => false,
-                'message' => 'Failed to delete data source: ' . $e->getMessage()
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            return $this->respondWithError($response, $e->getMessage());
         }
     }
 
-    public function testConnection(Request $request, Response $response): Response
+    public function testConnection(Request $request, Response $response, array $args): Response
     {
         try {
-            $data = $request->getParsedBody();
-            
-            // Validate required fields
-            $requiredFields = ['type', 'host', 'port', 'database', 'username', 'password'];
-            foreach ($requiredFields as $field) {
-                if (empty($data[$field])) {
-                    $response->getBody()->write(json_encode([
-                        'success' => false,
-                        'message' => "Missing required field: {$field}"
-                    ]));
-                    return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
-                }
+            $dataSource = DataSource::find($args['id']);
+            if (!$dataSource) {
+                return $this->respondWithError($response, 'Data source not found', 404);
             }
 
-            $dsn = $this->buildDsn($data);
-            $options = [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-            ];
+            // Convert to array and ensure all required fields are present
+            $config = $dataSource->toArray();
+            $config['database'] = $config['db_name']; // Add database field for backward compatibility
 
-            if ($data['type'] === 'mysql') {
-                $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
-            }
+            $db = new Database($config);
+            $db->connect();
 
-            $pdo = new PDO($dsn, $data['username'], $data['password'], $options);
-            
-            $response->getBody()->write(json_encode([
-                'success' => true,
-                'message' => 'Connection successful'
-            ]));
-            return $response->withHeader('Content-Type', 'application/json');
-        } catch (PDOException $e) {
-            $response->getBody()->write(json_encode([
-                'success' => false,
-                'message' => 'Connection failed: ' . $e->getMessage()
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            return $this->respondWithData($response, ['message' => 'Connection successful']);
+        } catch (\Exception $e) {
+            return $this->respondWithError($response, 'Connection failed: ' . $e->getMessage());
         }
     }
 
@@ -189,53 +167,72 @@ class DataSourceController extends BaseController
         try {
             $data = $request->getParsedBody();
             
-            if (empty($data['data_source_id'])) {
-                $response->getBody()->write(json_encode([
-                    'success' => false,
-                    'message' => 'Data source ID is required'
-                ]));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            if (!isset($data['data_source_id'])) {
+                return $this->respondWithError($response, 'Data source ID is required', 400);
             }
 
             $dataSource = DataSource::find($data['data_source_id']);
             if (!$dataSource) {
-                $response->getBody()->write(json_encode([
-                    'success' => false,
-                    'message' => 'Data source not found'
-                ]));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+                return $this->respondWithError($response, 'Data source not found', 404);
             }
 
-            $dsn = $this->buildDsn($dataSource);
-            $pdo = new PDO($dsn, $dataSource->username, $dataSource->password, [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-            ]);
-
+            error_log("Data source type: " . $dataSource->type);
+            
+            // Get connection based on type
+            $connection = $this->getConnection($dataSource);
+            error_log("Connection established successfully");
+            
+            // Get tables
             $tables = [];
             if ($dataSource->type === 'mysql') {
-                $stmt = $pdo->query("SHOW TABLES");
-                while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
-                    $tables[] = $row[0];
+                $stmt = $connection->query("SHOW TABLES");
+                if ($stmt) {
+                    while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
+                        $tables[] = $row[0];
+                    }
                 }
-            } else if ($dataSource->type === 'postgresql') {
-                $stmt = $pdo->query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'");
-                while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
-                    $tables[] = $row[0];
+            } elseif ($dataSource->type === 'postgresql') {
+                $stmt = $connection->query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'");
+                if ($stmt) {
+                    while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
+                        $tables[] = $row[0];
+                    }
                 }
             }
 
-            $response->getBody()->write(json_encode([
-                'success' => true,
-                'data' => $tables
-            ]));
-            return $response->withHeader('Content-Type', 'application/json');
+            error_log("Tables found: " . implode(', ', $tables));
+            return $this->respondWithData($response, $tables);
         } catch (\Exception $e) {
-            $response->getBody()->write(json_encode([
-                'success' => false,
-                'message' => 'Failed to get tables: ' . $e->getMessage()
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            error_log("Error getting tables: " . $e->getMessage());
+            return $this->respondWithError($response, $e->getMessage());
+        }
+    }
+
+    private function getConnection(DataSource $dataSource)
+    {
+        $dsn = '';
+        if ($dataSource->type === 'mysql') {
+            $dsn = "mysql:host={$dataSource->host};port={$dataSource->port};dbname={$dataSource->db_name}";
+        } elseif ($dataSource->type === 'postgresql') {
+            $dsn = "pgsql:host={$dataSource->host};port={$dataSource->port};dbname={$dataSource->db_name}";
+        }
+
+        $options = [
+            \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+            \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
+            \PDO::ATTR_EMULATE_PREPARES => false,
+        ];
+
+        if ($dataSource->use_ssl) {
+            $options[\PDO::MYSQL_ATTR_SSL_CA] = '/path/to/ca.pem';
+            $options[\PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
+        }
+
+        try {
+            return new \PDO($dsn, $dataSource->username, $dataSource->password, $options);
+        } catch (\PDOException $e) {
+            error_log("Database connection error: " . $e->getMessage());
+            throw new \Exception("Failed to connect to database: " . $e->getMessage());
         }
     }
 
@@ -243,48 +240,48 @@ class DataSourceController extends BaseController
     {
         try {
             $data = $request->getParsedBody();
+            error_log("Received data for table data: " . json_encode($data));
             
-            if (empty($data['data_source_id']) || empty($data['table_name'])) {
-                $response->getBody()->write(json_encode([
-                    'success' => false,
-                    'message' => 'Data source ID and table name are required'
-                ]));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            if (!isset($data['data_source_id']) || !isset($data['table_name'])) {
+                error_log("Missing required fields: data_source_id or table_name");
+                return $this->respondWithError($response, 'Data source ID and table name are required', 400);
             }
 
             $dataSource = DataSource::find($data['data_source_id']);
             if (!$dataSource) {
-                $response->getBody()->write(json_encode([
-                    'success' => false,
-                    'message' => 'Data source not found'
-                ]));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+                error_log("Data source not found: " . $data['data_source_id']);
+                return $this->respondWithError($response, 'Data source not found', 404);
             }
 
-            $dsn = $this->buildDsn($dataSource);
-            $pdo = new PDO($dsn, $dataSource->username, $dataSource->password, [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-            ]);
+            error_log("Getting data for table: " . $data['table_name'] . " from data source: " . $dataSource->name);
+            
+            // Get connection based on type
+            $connection = $this->getConnection($dataSource);
+            error_log("Connection established successfully");
+            
+            // Get table data
+            $limit = isset($data['limit']) ? (int)$data['limit'] : 0;
+            $query = "SELECT * FROM `" . $data['table_name'] . "`";
+            if ($limit > 0) {
+                $query .= " LIMIT " . $limit;
+            }
 
-            $columns = !empty($data['columns']) ? implode(', ', array_map(function($col) {
-                return "`{$col}`";
-            }, $data['columns'])) : '*';
+            $stmt = $connection->query($query);
+            if (!$stmt) {
+                throw new \Exception("Failed to execute query: " . implode(" ", $connection->errorInfo()));
+            }
 
-            $stmt = $pdo->query("SELECT {$columns} FROM `{$data['table_name']}` LIMIT 1000");
-            $rows = $stmt->fetchAll();
+            $rows = [];
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $rows[] = $row;
+            }
 
-            $response->getBody()->write(json_encode([
-                'success' => true,
-                'data' => $rows
-            ]));
-            return $response->withHeader('Content-Type', 'application/json');
+            error_log("Retrieved " . count($rows) . " rows from table");
+            return $this->respondWithData($response, ['rows' => $rows]);
         } catch (\Exception $e) {
-            $response->getBody()->write(json_encode([
-                'success' => false,
-                'message' => 'Failed to get table data: ' . $e->getMessage()
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            error_log("Error getting table data: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
+            return $this->respondWithError($response, $e->getMessage());
         }
     }
 
@@ -292,71 +289,67 @@ class DataSourceController extends BaseController
     {
         try {
             $data = $request->getParsedBody();
+            error_log("Received data: " . json_encode($data));
             
-            if (empty($data['data_source_id']) || empty($data['table_name'])) {
-                $response->getBody()->write(json_encode([
-                    'success' => false,
-                    'message' => 'Data source ID and table name are required'
-                ]));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            if (!isset($data['data_source_id']) || !isset($data['table_name'])) {
+                error_log("Missing required fields: data_source_id or table_name");
+                return $this->respondWithError($response, 'Data source ID and table name are required', 400);
             }
 
             $dataSource = DataSource::find($data['data_source_id']);
             if (!$dataSource) {
-                $response->getBody()->write(json_encode([
-                    'success' => false,
-                    'message' => 'Data source not found'
-                ]));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+                error_log("Data source not found: " . $data['data_source_id']);
+                return $this->respondWithError($response, 'Data source not found', 404);
             }
 
-            $dsn = $this->buildDsn($dataSource);
-            $pdo = new PDO($dsn, $dataSource->username, $dataSource->password, [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-            ]);
-
+            error_log("Getting structure for table: " . $data['table_name'] . " from data source: " . $dataSource->name);
+            
+            // Get connection based on type
+            $connection = $this->getConnection($dataSource);
+            error_log("Connection established successfully");
+            
+            // Get table structure
             $columns = [];
             if ($dataSource->type === 'mysql') {
-                $stmt = $pdo->query("SHOW COLUMNS FROM `{$data['table_name']}`");
-                while ($row = $stmt->fetch()) {
-                    $columns[] = [
-                        'name' => $row['Field'],
-                        'type' => $row['Type']
-                    ];
+                $stmt = $connection->query("SHOW COLUMNS FROM `" . $data['table_name'] . "`");
+                if ($stmt) {
+                    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                        $columns[] = [
+                            'name' => $row['Field'],
+                            'type' => $row['Type'],
+                            'nullable' => $row['Null'] === 'YES',
+                            'key' => $row['Key'],
+                            'default' => $row['Default'],
+                            'extra' => $row['Extra']
+                        ];
+                    }
                 }
-            } else if ($dataSource->type === 'postgresql') {
-                $stmt = $pdo->query("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '{$data['table_name']}'");
-                while ($row = $stmt->fetch()) {
-                    $columns[] = [
-                        'name' => $row['column_name'],
-                        'type' => $row['data_type']
-                    ];
+            } elseif ($dataSource->type === 'postgresql') {
+                $stmt = $connection->query("
+                    SELECT column_name, data_type, is_nullable, column_default, character_maximum_length
+                    FROM information_schema.columns
+                    WHERE table_name = '" . $data['table_name'] . "'
+                    ORDER BY ordinal_position
+                ");
+                if ($stmt) {
+                    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                        $columns[] = [
+                            'name' => $row['column_name'],
+                            'type' => $row['data_type'],
+                            'nullable' => $row['is_nullable'] === 'YES',
+                            'default' => $row['column_default'],
+                            'max_length' => $row['character_maximum_length']
+                        ];
+                    }
                 }
             }
 
-            $response->getBody()->write(json_encode([
-                'success' => true,
-                'data' => $columns
-            ]));
-            return $response->withHeader('Content-Type', 'application/json');
+            error_log("Columns found: " . implode(', ', array_column($columns, 'name')));
+            return $this->respondWithData($response, $columns);
         } catch (\Exception $e) {
-            $response->getBody()->write(json_encode([
-                'success' => false,
-                'message' => 'Failed to get table structure: ' . $e->getMessage()
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            error_log("Error getting table structure: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
+            return $this->respondWithError($response, $e->getMessage());
         }
-    }
-
-    private function buildDsn($dataSource): string
-    {
-        if ($dataSource->type === 'mysql') {
-            return "mysql:host={$dataSource->host};port={$dataSource->port};dbname={$dataSource->db_name}";
-        } else if ($dataSource->type === 'postgresql') {
-            return "pgsql:host={$dataSource->host};port={$dataSource->port};dbname={$dataSource->db_name}";
-        }
-
-        throw new \Exception("Unsupported database type: {$dataSource->type}");
     }
 } 

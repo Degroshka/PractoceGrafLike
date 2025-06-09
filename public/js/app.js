@@ -1,6 +1,3 @@
-// Global variables
-let currentDashboardId = null;
-
 // Auth functions
 function showLoginForm() {
     document.getElementById('loginForm').style.display = 'block';
@@ -12,23 +9,27 @@ function showRegisterForm() {
     document.getElementById('registerForm').style.display = 'block';
 }
 
-function showMainContent() {
-    document.getElementById('authForms').style.display = 'none';
-    document.getElementById('mainContent').style.display = 'block';
-}
-
-// Navigation functions
 function showDataSources() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        showLoginForm();
+        return;
+    }
+    
     document.getElementById('dataSourcesSection').style.display = 'block';
     document.getElementById('dashboardsSection').style.display = 'none';
-    document.getElementById('dashboard-view').style.display = 'none';
     loadDataSources();
 }
 
 function showDashboards() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        showLoginForm();
+        return;
+    }
+    
     document.getElementById('dataSourcesSection').style.display = 'none';
     document.getElementById('dashboardsSection').style.display = 'block';
-    document.getElementById('dashboard-view').style.display = 'none';
     loadDashboards();
 }
 
@@ -42,105 +43,138 @@ function showAddDashboardForm() {
     form.style.display = form.style.display === 'none' ? 'block' : 'none';
 }
 
-// Utility functions
-function showMessage(message, type = 'info') {
+function showMessage(message, type) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}`;
     messageDiv.textContent = message;
-    document.body.appendChild(messageDiv);
-    setTimeout(() => messageDiv.remove(), 5000);
+    
+    const container = document.querySelector('.container');
+    container.insertBefore(messageDiv, container.firstChild);
+    
+    setTimeout(() => {
+        messageDiv.remove();
+    }, 5000);
 }
 
-// Auth API functions
+// Auth functions
 async function register() {
     const name = document.getElementById('registerName').value;
     const email = document.getElementById('registerEmail').value;
     const password = document.getElementById('registerPassword').value;
 
+    if (!name || !email || !password) {
+        showMessage('Please fill in all fields', 'error');
+        return;
+    }
+
     try {
         const response = await fetch('/api/auth/register', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
             },
-            body: JSON.stringify({ name, email, password })
+            body: JSON.stringify({
+                name: name.trim(),
+                email: email.trim(),
+                password: password.trim()
+            })
         });
 
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        const data = await response.json();
+        console.log('Registration response:', data);
+        
+        if (data.success) {
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('user', JSON.stringify(data.user));
+            showMessage('Registration successful!', 'success');
+            document.getElementById('authForms').style.display = 'none';
+            document.getElementById('mainContent').style.display = 'block';
+            showDataSources();
+        } else {
+            showMessage(data.error || 'Registration failed', 'error');
         }
-
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error(result.message || 'Registration failed');
-        }
-
-        showMessage('Registration successful! Please login.', 'success');
-        showLoginForm();
     } catch (error) {
         console.error('Registration error:', error);
-        showMessage(error.message, 'error');
+        showMessage('Registration failed. Please try again.', 'error');
     }
 }
 
 async function login() {
-    try {
-        const email = document.getElementById('loginEmail').value;
-        const password = document.getElementById('loginPassword').value;
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
 
+    try {
         const response = await fetch('/api/auth/login', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
             },
             body: JSON.stringify({ email, password })
         });
 
-        const result = await response.json();
-        
-        if (!response.ok) {
-            throw new Error(result.message || 'Login failed');
+        const data = await response.json();
+        if (data.success) {
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('user', JSON.stringify(data.user));
+            showMessage('Login successful!', 'success');
+            document.getElementById('authForms').style.display = 'none';
+            document.getElementById('mainContent').style.display = 'block';
+            showDataSources();
+        } else {
+            showMessage(data.message || 'Login failed', 'error');
         }
-
-        if (!result.success) {
-            throw new Error(result.message || 'Login failed');
-        }
-
-        if (!result.token) {
-            throw new Error('Invalid response from server: missing token');
-        }
-
-        localStorage.setItem('token', result.token);
-        showMainContent();
-        loadDataSources();
     } catch (error) {
-        console.error('Login error:', error);
-        showMessage(error.message, 'error');
+        console.error('Error:', error);
+        showMessage('Login failed: ' + error.message, 'error');
     }
 }
 
 function logout() {
     localStorage.removeItem('token');
-    document.getElementById('mainContent').style.display = 'none';
+    localStorage.removeItem('user');
     document.getElementById('authForms').style.display = 'block';
+    document.getElementById('mainContent').style.display = 'none';
     showLoginForm();
 }
 
-// Data Source API functions
+// Data Source functions
 async function loadDataSources() {
     try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            showMessage('Please login first', 'error');
+            return;
+        }
+
+        console.log('Fetching data sources...');
         const response = await fetch('/api/data-sources', {
             method: 'GET',
             headers: {
-                'Authorization': 'Bearer ' + localStorage.getItem('token')
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json'
             }
         });
+
+        console.log('Response status:', response.status);
+        console.log('Response headers:', Object.fromEntries(response.headers.entries()));
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        const result = await response.json();
+        // Try to parse the response as JSON
+        let result;
+        try {
+            const text = await response.text();
+            console.log('Response text:', text);
+            result = JSON.parse(text);
+        } catch (e) {
+            console.error('JSON parse error:', e);
+            throw new Error('Failed to parse server response as JSON');
+        }
+
         if (!result.success) {
             throw new Error(result.message || 'Failed to load data sources');
         }
@@ -148,23 +182,19 @@ async function loadDataSources() {
         const dataSourcesList = document.getElementById('dataSourcesList');
         dataSourcesList.innerHTML = '';
 
-        if (!Array.isArray(result.data)) {
+        if (!result.data || !Array.isArray(result.data)) {
             throw new Error('Invalid data format received from server');
         }
 
-        result.data.forEach(ds => {
+        result.data.forEach(dataSource => {
             const li = document.createElement('li');
-            li.className = 'data-source-item';
             li.innerHTML = `
-                <div class="data-source-info">
-                    <h3>${ds.name}</h3>
-                    <p>Type: ${ds.type}</p>
-                    <p>Host: ${ds.host}</p>
-                    <p>Database: ${ds.db_name}</p>
-                </div>
-                <div class="data-source-actions">
-                    <button onclick="testConnection(${ds.id})">Test Connection</button>
-                    <button onclick="deleteDataSource(${ds.id})">Delete</button>
+                <div class="data-source-item">
+                    <span>${dataSource.name} (${dataSource.type})</span>
+                    <div class="data-source-actions">
+                        <button onclick="testConnection(${dataSource.id})">Test Connection</button>
+                        <button onclick="deleteDataSource(${dataSource.id})">Delete</button>
+                    </div>
                 </div>
             `;
             dataSourcesList.appendChild(li);
@@ -181,40 +211,46 @@ async function loadDataSources() {
                 dashboardDataSource.appendChild(option);
             });
         }
+
     } catch (error) {
         console.error('Error loading data sources:', error);
-        showMessage(error.message, 'error');
+        showMessage(error.message || 'Failed to load data sources', 'error');
     }
 }
 
 async function addDataSource() {
     try {
-        // Get form values
-        const name = document.getElementById('dsName').value.trim();
-        const type = document.getElementById('dsType').value;
-        const host = document.getElementById('dsHost').value.trim();
-        const port = parseInt(document.getElementById('dsPort').value);
-        const dbName = document.getElementById('dsDatabase').value.trim();
-        const username = document.getElementById('dsUsername').value.trim();
-        const password = document.getElementById('dsPassword').value;
-        const useSsl = document.getElementById('dsUseSsl').checked;
-
-        // Validate required fields
-        if (!name || !type || !host || !port || !dbName || !username || !password) {
-            showMessage('Please fill in all required fields', 'error');
+        const token = localStorage.getItem('token');
+        if (!token) {
+            showMessage('Please login first', 'error');
             return;
         }
 
+        // Get user ID from token
+        const tokenParts = token.split('.');
+        if (tokenParts.length !== 3) {
+            throw new Error('Invalid token format');
+        }
+
+        const tokenPayload = atob(tokenParts[1]);
+        const tokenData = JSON.parse(tokenPayload);
+        const userId = tokenData.user_id;
+
+        if (!userId) {
+            throw new Error('User ID not found in token');
+        }
+
         const dataSource = {
-            name,
-            type,
+            name: document.getElementById('dsName').value,
+            type: document.getElementById('dsType').value,
             connection_type: 'local',
-            host,
-            port,
-            db_name: dbName,
-            username,
-            password,
-            use_ssl: useSsl
+            host: document.getElementById('dsHost').value,
+            port: parseInt(document.getElementById('dsPort').value),
+            db_name: document.getElementById('dsDatabase').value,
+            username: document.getElementById('dsUsername').value,
+            password: document.getElementById('dsPassword').value,
+            use_ssl: document.getElementById('dsUseSsl').checked,
+            user_id: parseInt(userId) // Ensure user_id is a number
         };
 
         console.log('Sending data source:', dataSource); // Debug log
@@ -222,22 +258,21 @@ async function addDataSource() {
         const response = await fetch('/api/data-sources', {
             method: 'POST',
             headers: {
+                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + localStorage.getItem('token')
+                'Accept': 'application/json'
             },
             body: JSON.stringify(dataSource)
         });
 
+        const responseText = await response.text();
+        console.log('Response text:', responseText); // Debug log
+
         let result;
         try {
-            result = await response.json();
+            result = JSON.parse(responseText);
         } catch (e) {
-            console.error('Error parsing response:', e);
-            throw new Error('Invalid response from server');
-        }
-
-        if (!response.ok) {
-            throw new Error(result.message || `HTTP error! status: ${response.status}`);
+            throw new Error('Failed to parse server response as JSON');
         }
 
         if (!result.success) {
@@ -246,163 +281,163 @@ async function addDataSource() {
 
         showMessage('Data source added successfully', 'success');
         document.getElementById('addDataSourceForm').style.display = 'none';
-        
-        // Clear form
-        document.getElementById('dsName').value = '';
-        document.getElementById('dsType').value = 'mysql';
-        document.getElementById('dsHost').value = '';
-        document.getElementById('dsPort').value = '';
-        document.getElementById('dsDatabase').value = '';
-        document.getElementById('dsUsername').value = '';
-        document.getElementById('dsPassword').value = '';
-        document.getElementById('dsUseSsl').checked = false;
-
         loadDataSources();
     } catch (error) {
         console.error('Error adding data source:', error);
-        showMessage(error.message, 'error');
+        showMessage(error.message || 'Failed to add data source', 'error');
     }
 }
 
 async function deleteDataSource(id) {
-    if (!confirm('Are you sure you want to delete this data source?')) {
-        return;
-    }
-
     try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            showLoginForm();
+            return;
+        }
+
+        if (!confirm('Are you sure you want to delete this data source?')) {
+            return;
+        }
+
         const response = await fetch(`/api/data-sources/${id}`, {
             method: 'DELETE',
             headers: {
-                'Authorization': 'Bearer ' + localStorage.getItem('token')
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json'
             }
         });
 
+        console.log('Delete response status:', response.status);
+        console.log('Delete response headers:', Object.fromEntries(response.headers.entries()));
+
         if (!response.ok) {
+            if (response.status === 401) {
+                showMessage('Session expired. Please login again.', 'error');
+                logout();
+                return;
+            }
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error(result.message || 'Failed to delete data source');
+        const data = await response.json();
+        console.log('Delete response data:', data);
+        
+        if (data.success) {
+            showMessage('Data source deleted successfully', 'success');
+            loadDataSources(); // Reload the list
+        } else {
+            showMessage(data.message || 'Failed to delete data source', 'error');
         }
-
-        showMessage('Data source deleted successfully', 'success');
-        loadDataSources();
     } catch (error) {
         console.error('Error deleting data source:', error);
-        showMessage(error.message, 'error');
+        showMessage('Failed to delete data source: ' + error.message, 'error');
     }
 }
 
 async function testConnection(id) {
     try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            showMessage('Please login first', 'error');
+            return;
+        }
+
+        console.log('Testing connection for data source:', id);
         const response = await fetch(`/api/data-sources/${id}/test`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + localStorage.getItem('token')
-            }
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                include_password: true // Add this flag to include password in test
+            })
         });
+
+        console.log('Response status:', response.status);
+        console.log('Response headers:', Object.fromEntries(response.headers.entries()));
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        const result = await response.json();
+        const responseText = await response.text();
+        console.log('Response text:', responseText);
+
+        let result;
+        try {
+            result = JSON.parse(responseText);
+        } catch (e) {
+            console.error('JSON parse error:', e);
+            throw new Error('Failed to parse server response as JSON');
+        }
+
         if (!result.success) {
             throw new Error(result.message || 'Connection test failed');
         }
 
-        showMessage('Connection successful', 'success');
+        showMessage(result.data.message || 'Connection successful', 'success');
     } catch (error) {
         console.error('Error testing connection:', error);
-        showMessage(error.message, 'error');
+        showMessage(error.message || 'Failed to test connection', 'error');
     }
 }
 
-// Dashboard API functions
+// Dashboard functions
 async function loadDashboards() {
     try {
-        const response = await fetch('/api/dashboards', {
-            headers: {
-                'Authorization': 'Bearer ' + localStorage.getItem('token')
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error(result.message || 'Failed to load dashboards');
-        }
-
-        const dashboardsList = document.getElementById('dashboardsList');
-        dashboardsList.innerHTML = '';
-
-        if (!Array.isArray(result.data)) {
-            throw new Error('Invalid data format received from server');
-        }
-
-        result.data.forEach(dashboard => {
-            const li = document.createElement('li');
-            li.className = 'dashboard-item';
-            li.innerHTML = `
-                <div class="dashboard-info">
-                    <h3>${dashboard.name}</h3>
-                    <p>${dashboard.description || 'No description'}</p>
-                </div>
-                <div class="dashboard-actions">
-                    <button onclick="viewDashboard(${dashboard.id})">View</button>
-                    <button onclick="deleteDashboard(${dashboard.id})">Delete</button>
-                </div>
-            `;
-            dashboardsList.appendChild(li);
-        });
-    } catch (error) {
-        console.error('Error loading dashboards:', error);
-        showMessage(error.message, 'error');
-    }
-}
-
-async function addDashboard() {
-    try {
-        const dashboard = {
-            name: document.getElementById('dashboardName').value,
-            description: document.getElementById('dashboardDescription').value,
-            data_source_id: document.getElementById('dashboardDataSource').value
-        };
-
-        if (!dashboard.name || !dashboard.data_source_id) {
-            showMessage('Please fill in all required fields', 'error');
+        const token = localStorage.getItem('token');
+        if (!token) {
+            showLoginForm();
             return;
         }
 
         const response = await fetch('/api/dashboards', {
-            method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + localStorage.getItem('token')
-            },
-            body: JSON.stringify(dashboard)
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json'
+            }
         });
 
         if (!response.ok) {
+            if (response.status === 401) {
+                showMessage('Session expired. Please login again.', 'error');
+                logout();
+                return;
+            }
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error(result.message || 'Failed to create dashboard');
+        const data = await response.json();
+        console.log('Load dashboards response:', data);
+        
+        if (data.success) {
+            const dashboardsList = document.getElementById('dashboardsList');
+            dashboardsList.innerHTML = '';
+            
+            data.data.forEach(dashboard => {
+                const li = document.createElement('li');
+                li.className = 'dashboard-item';
+                li.innerHTML = `
+                    <div class="dashboard-info">
+                        <h3>${dashboard.name}</h3>
+                        <p>${dashboard.description || 'No description'}</p>
+                    </div>
+                    <div class="dashboard-actions">
+                        <button onclick="viewDashboard(${dashboard.id})">View</button>
+                        <button onclick="deleteDashboard(${dashboard.id})">Delete</button>
+                    </div>
+                `;
+                dashboardsList.appendChild(li);
+            });
+        } else {
+            showMessage(data.error || 'Failed to load dashboards', 'error');
         }
-
-        showMessage('Dashboard created successfully', 'success');
-        document.getElementById('addDashboardForm').style.display = 'none';
-        loadDashboards();
     } catch (error) {
-        console.error('Error creating dashboard:', error);
-        showMessage(error.message, 'error');
+        console.error('Error loading dashboards:', error);
+        showMessage('Failed to load dashboards', 'error');
     }
 }
 
@@ -412,164 +447,145 @@ async function deleteDashboard(id) {
     }
 
     try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            showLoginForm();
+            return;
+        }
+
         const response = await fetch(`/api/dashboards/${id}`, {
             method: 'DELETE',
             headers: {
-                'Authorization': 'Bearer ' + localStorage.getItem('token')
+                'Authorization': `Bearer ${token}`
             }
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+            showMessage('Dashboard deleted successfully!', 'success');
+            loadDashboards();
+        } else {
+            showMessage(data.error || 'Failed to delete dashboard', 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting dashboard:', error);
+        showMessage('Failed to delete dashboard', 'error');
+    }
+}
+
+async function addDashboard() {
+    const name = document.getElementById('dashboardName').value;
+    const description = document.getElementById('dashboardDescription').value;
+    const dataSourceId = document.getElementById('dashboardDataSource').value;
+
+    if (!name || !dataSourceId) {
+        showMessage('Please fill in all required fields', 'error');
+        return;
+    }
+
+    try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            showLoginForm();
+            return;
+        }
+
+        const response = await fetch('/api/dashboards', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                name,
+                description,
+                data_source_id: dataSourceId,
+                config: { panels: [] }
+            })
         });
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error(result.message || 'Failed to delete dashboard');
+        const data = await response.json();
+        
+        if (data.success) {
+            showMessage('Dashboard created successfully!', 'success');
+            document.getElementById('addDashboardForm').reset();
+            document.getElementById('addDashboardForm').style.display = 'none';
+            loadDashboards();
+        } else {
+            showMessage(data.error || 'Failed to create dashboard', 'error');
         }
-
-        showMessage('Dashboard deleted successfully', 'success');
-        loadDashboards();
     } catch (error) {
-        console.error('Error deleting dashboard:', error);
-        showMessage(error.message, 'error');
+        console.error('Error creating dashboard:', error);
+        showMessage('Failed to create dashboard', 'error');
     }
 }
 
 async function viewDashboard(id) {
     try {
-        if (!id) {
-            throw new Error('Dashboard ID is required');
-        }
-
+        // Show dashboard view
         document.getElementById('dashboardsSection').style.display = 'none';
         document.getElementById('dashboard-view').style.display = 'block';
-        currentDashboardId = id;
 
-        const response = await fetch(`/api/dashboards/${id}`, {
-            headers: {
-                'Authorization': 'Bearer ' + localStorage.getItem('token')
-            }
-        });
-
-        let result;
-        try {
-            result = await response.json();
-        } catch (e) {
-            console.error('Error parsing response:', e);
-            throw new Error('Invalid response from server');
-        }
-
-        if (!response.ok) {
-            throw new Error(result.message || `HTTP error! status: ${response.status}`);
-        }
-
-        if (!result.success) {
-            throw new Error(result.message || 'Failed to load dashboard');
-        }
-
-        if (!result.data) {
-            throw new Error('Invalid response from server');
-        }
-
-        // Load dashboard data and visualizations
-        const dashboard = result.data;
-        
         // Load data sources for the select
-        const dataSourceSelect = document.getElementById('data-source-select');
-        dataSourceSelect.innerHTML = '<option value="">Select Data Source</option>';
-        
         const dataSourcesResponse = await fetch('/api/data-sources', {
+            method: 'GET',
             headers: {
                 'Authorization': 'Bearer ' + localStorage.getItem('token')
             }
         });
-
-        let dataSourcesResult;
-        try {
-            dataSourcesResult = await dataSourcesResponse.json();
-        } catch (e) {
-            console.error('Error parsing response:', e);
-            throw new Error('Invalid response from server');
-        }
 
         if (!dataSourcesResponse.ok) {
-            throw new Error(dataSourcesResult.message || 'Failed to load data sources');
+            throw new Error('Failed to load data sources');
         }
 
+        const dataSourcesResult = await dataSourcesResponse.json();
         if (!dataSourcesResult.success) {
-            throw new Error(dataSourcesResult.message || 'Failed to load data sources');
+            throw new Error(dataSourcesResult.message);
         }
 
-        if (!Array.isArray(dataSourcesResult.data)) {
-            throw new Error('Invalid response from server');
-        }
-
+        const dataSourceSelect = document.getElementById('data-source-select');
+        dataSourceSelect.innerHTML = '<option value="">Select Data Source</option>';
         dataSourcesResult.data.forEach(ds => {
             const option = document.createElement('option');
             option.value = ds.id;
             option.textContent = ds.name;
-            if (ds.id === dashboard.data_source_id) {
-                option.selected = true;
-            }
             dataSourceSelect.appendChild(option);
         });
 
-        // Add event listener for data source selection
-        dataSourceSelect.addEventListener('change', async function() {
-            const selectedDataSourceId = this.value;
+        // Add event listeners
+        dataSourceSelect.onchange = async function() {
             const tableSelect = document.getElementById('table-select');
-            const columnsSelect = document.getElementById('columns-select');
-            const chartTypeSelect = document.getElementById('chart-type-select');
-            const createVisualizationBtn = document.getElementById('create-visualization-btn');
-
-            // Reset dependent selects
+            tableSelect.disabled = !this.value;
             tableSelect.innerHTML = '<option value="">Select Table</option>';
-            columnsSelect.innerHTML = '<option value="">Select Columns</option>';
-            chartTypeSelect.innerHTML = '<option value="">Select Chart Type</option>';
             
-            // Disable all dependent controls initially
-            tableSelect.disabled = true;
-            columnsSelect.disabled = true;
-            chartTypeSelect.disabled = true;
-            createVisualizationBtn.disabled = true;
-
-            if (selectedDataSourceId) {
+            if (this.value) {
                 try {
-                    const tablesResponse = await fetch('/api/data-sources/tables', {
+                    const response = await fetch('/api/data-sources/tables', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             'Authorization': 'Bearer ' + localStorage.getItem('token')
                         },
                         body: JSON.stringify({
-                            data_source_id: selectedDataSourceId
+                            data_source_id: this.value
                         })
                     });
 
-                    let tablesResult;
-                    try {
-                        tablesResult = await tablesResponse.json();
-                    } catch (e) {
-                        console.error('Error parsing response:', e);
-                        throw new Error('Invalid response from server');
+                    if (!response.ok) {
+                        throw new Error('Failed to load tables');
                     }
 
-                    if (!tablesResponse.ok) {
-                        throw new Error(tablesResult.message || `HTTP error! status: ${tablesResponse.status}`);
+                    const result = await response.json();
+                    if (!result.success) {
+                        throw new Error(result.message);
                     }
 
-                    if (!tablesResult.success) {
-                        throw new Error(tablesResult.message || 'Failed to load tables');
-                    }
-
-                    if (!Array.isArray(tablesResult.data)) {
-                        throw new Error('Invalid response from server');
-                    }
-
-                    // Enable table select and populate with tables
-                    tableSelect.disabled = false;
-                    tablesResult.data.forEach(table => {
+                    result.data.forEach(table => {
                         const option = document.createElement('option');
                         option.value = table;
                         option.textContent = table;
@@ -580,134 +596,104 @@ async function viewDashboard(id) {
                     showMessage(error.message, 'error');
                 }
             }
-        });
+        };
 
-        // Add event listener for table selection
-        const tableSelect = document.getElementById('table-select');
-        tableSelect.addEventListener('change', async function() {
-            const selectedTable = this.value;
-            const selectedDataSourceId = dataSourceSelect.value;
+        document.getElementById('table-select').onchange = async function() {
             const columnsSelect = document.getElementById('columns-select');
-            const chartTypeSelect = document.getElementById('chart-type-select');
-            const createVisualizationBtn = document.getElementById('create-visualization-btn');
-
-            // Reset dependent selects
-            columnsSelect.innerHTML = '<option value="">Select Columns</option>';
-            chartTypeSelect.innerHTML = '<option value="">Select Chart Type</option>';
+            const yAxisSelect = document.getElementById('y-axis-select');
+            columnsSelect.disabled = !this.value;
+            yAxisSelect.disabled = !this.value;
+            columnsSelect.innerHTML = '';
+            yAxisSelect.innerHTML = '';
             
-            // Disable all dependent controls initially
-            columnsSelect.disabled = true;
-            chartTypeSelect.disabled = true;
-            createVisualizationBtn.disabled = true;
-
-            if (selectedTable && selectedDataSourceId) {
+            if (this.value) {
                 try {
-                    const columnsResponse = await fetch('/api/data-sources/columns', {
+                    const response = await fetch('/api/data-sources/table-structure', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             'Authorization': 'Bearer ' + localStorage.getItem('token')
                         },
                         body: JSON.stringify({
-                            data_source_id: selectedDataSourceId,
-                            table: selectedTable
+                            data_source_id: document.getElementById('data-source-select').value,
+                            table_name: this.value
                         })
                     });
 
-                    let columnsResult;
-                    try {
-                        columnsResult = await columnsResponse.json();
-                    } catch (e) {
-                        console.error('Error parsing response:', e);
-                        throw new Error('Invalid response from server');
+                    if (!response.ok) {
+                        throw new Error('Failed to load table structure');
                     }
 
-                    if (!columnsResponse.ok) {
-                        throw new Error(columnsResult.message || `HTTP error! status: ${columnsResponse.status}`);
+                    const result = await response.json();
+                    if (!result.success) {
+                        throw new Error(result.message);
                     }
 
-                    if (!columnsResult.success) {
-                        throw new Error(columnsResult.message || 'Failed to load columns');
-                    }
-
-                    if (!Array.isArray(columnsResult.data)) {
-                        throw new Error('Invalid response from server');
-                    }
-
-                    // Enable columns select and populate with columns
-                    columnsSelect.disabled = false;
-                    columnsResult.data.forEach(column => {
+                    // Add columns to both selects
+                    result.data.forEach(column => {
+                        // Add to X-axis select (multiple selection)
                         const option = document.createElement('option');
-                        option.value = column;
-                        option.textContent = column;
+                        option.value = column.column_name;
+                        option.textContent = `${column.column_name} (${column.data_type})`;
+                        option.dataset.type = column.data_type;
                         columnsSelect.appendChild(option);
+
+                        // Add to Y-axis select (single selection)
+                        const yOption = document.createElement('option');
+                        yOption.value = column.column_name;
+                        yOption.textContent = `${column.column_name} (${column.data_type})`;
+                        yOption.dataset.type = column.data_type;
+                        yAxisSelect.appendChild(yOption);
                     });
+
+                    // Enable both selects
+                    columnsSelect.disabled = false;
+                    yAxisSelect.disabled = false;
                 } catch (error) {
-                    console.error('Error loading columns:', error);
+                    console.error('Error loading table structure:', error);
                     showMessage(error.message, 'error');
                 }
             }
-        });
-
-        // Add event listener for columns selection
-        const columnsSelect = document.getElementById('columns-select');
-        columnsSelect.addEventListener('change', function() {
-            const selectedColumns = Array.from(this.selectedOptions).map(option => option.value);
-            const chartTypeSelect = document.getElementById('chart-type-select');
-            const createVisualizationBtn = document.getElementById('create-visualization-btn');
-
-            // Reset chart type select
-            chartTypeSelect.innerHTML = '<option value="">Select Chart Type</option>';
-            
-            // Disable dependent controls initially
-            chartTypeSelect.disabled = true;
-            createVisualizationBtn.disabled = true;
-
-            if (selectedColumns.length > 0) {
-                // Enable chart type select and populate with available types
-                chartTypeSelect.disabled = false;
-                const availableTypes = getAvailableChartTypes(selectedColumns);
-                availableTypes.forEach(type => {
-                    const option = document.createElement('option');
-                    option.value = type;
-                    option.textContent = type.charAt(0).toUpperCase() + type.slice(1);
-                    chartTypeSelect.appendChild(option);
-                });
-            }
-        });
-
-        // Add event listener for chart type selection
-        const chartTypeSelect = document.getElementById('chart-type-select');
-        chartTypeSelect.addEventListener('change', function() {
-            const createVisualizationBtn = document.getElementById('create-visualization-btn');
-            createVisualizationBtn.disabled = !this.value;
-        });
+        };
 
         // Add event listener for create visualization button
-        const createVisualizationBtn = document.getElementById('create-visualization-btn');
-        createVisualizationBtn.addEventListener('click', async function() {
-            const selectedDataSourceId = dataSourceSelect.value;
-            const selectedTable = tableSelect.value;
-            const selectedColumns = Array.from(columnsSelect.selectedOptions).map(option => option.value);
-            const selectedChartType = chartTypeSelect.value;
+        document.getElementById('create-visualization-btn').onclick = async function() {
+            const dataSourceId = dataSourceSelect.value;
+            const table = document.getElementById('table-select').value;
+            const columns = Array.from(document.getElementById('columns-select').selectedOptions).map(opt => opt.value);
+            const type = document.getElementById('chart-type-select').value;
 
-            if (!selectedDataSourceId || !selectedTable || selectedColumns.length === 0 || !selectedChartType) {
+            if (!dataSourceId || !table || columns.length === 0 || !type) {
                 showMessage('Please select all required fields', 'error');
                 return;
             }
 
+            await createVisualization(dataSourceId, table, columns, type);
+        };
+
+        // Load existing visualizations if dashboard ID is provided
+        if (id) {
             try {
-                await createVisualization(selectedDataSourceId, selectedTable, selectedColumns, selectedChartType);
+                const response = await fetch(`/api/dashboards/${id}`, {
+                    headers: {
+                        'Authorization': 'Bearer ' + localStorage.getItem('token')
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to load dashboard');
+                }
+
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error(result.message);
+                }
+
+                // TODO: Load existing visualizations
             } catch (error) {
-                console.error('Error creating visualization:', error);
+                console.error('Error loading dashboard:', error);
                 showMessage(error.message, 'error');
             }
-        });
-
-        // If dashboard has a data source, trigger the change event
-        if (dashboard.data_source_id) {
-            dataSourceSelect.value = dashboard.data_source_id;
-            dataSourceSelect.dispatchEvent(new Event('change'));
         }
     } catch (error) {
         console.error('Error viewing dashboard:', error);
@@ -715,27 +701,13 @@ async function viewDashboard(id) {
     }
 }
 
-function getAvailableChartTypes(selectedColumns) {
-    const types = ['table'];
-    
-    if (selectedColumns.length >= 1) {
-        types.push('pie', 'doughnut');
-    }
-    
-    if (selectedColumns.length >= 2) {
-        types.push('bar', 'line');
-    }
-    
-    return types;
-}
-
-// Initialize the application
+// Check authentication on page load
 document.addEventListener('DOMContentLoaded', function() {
-    // Check if user is logged in
     const token = localStorage.getItem('token');
     if (token) {
-        showMainContent();
-        loadDataSources();
+        document.getElementById('authForms').style.display = 'none';
+        document.getElementById('mainContent').style.display = 'block';
+        showDataSources();
     } else {
         showLoginForm();
     }
@@ -908,7 +880,7 @@ document.getElementById('data-source-select').addEventListener('change', async f
 
     try {
         const token = localStorage.getItem('token');
-        const response = await fetch(`/api/datasources/${dataSourceId}`, {
+        const response = await fetch(`/api/data-sources/${dataSourceId}`, {
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Accept': 'application/json'
@@ -925,7 +897,7 @@ document.getElementById('data-source-select').addEventListener('change', async f
         }
 
         // Get tables from the data source
-        const tablesResponse = await fetch('/api/datasources/tables', {
+        const tablesResponse = await fetch('/api/data-sources/tables', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -967,7 +939,7 @@ document.getElementById('data-source-select').addEventListener('change', async f
 
             try {
                 // Get columns for selected table
-                const columnsResponse = await fetch('/api/datasources/table-data', {
+                const columnsResponse = await fetch('/api/data-sources/table-data', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1127,7 +1099,7 @@ document.getElementById('data-source-select').addEventListener('change', async f
                         if (window.visualizationCache && window.visualizationCache[cacheKey]) {
                             data = window.visualizationCache[cacheKey];
                         } else {
-                            const response = await fetch('/api/datasources/table-data', {
+                            const response = await fetch('/api/data-sources/table-data', {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',
@@ -1214,21 +1186,35 @@ document.getElementById('data-source-select').addEventListener('change', async f
                     const canvas = document.createElement('canvas');
                     container.appendChild(canvas);
 
-                    // Подготовка данных для графика
-                    const labels = data.rows.map(row => row[data.columns[0].name]);
-                    const datasets = data.columns.slice(1).map((column, index) => ({
-                        label: column.name,
-                        data: data.rows.map(row => row[column.name]),
-                        backgroundColor: `hsla(${index * 360 / data.columns.length}, 70%, 50%, 0.7)`,
-                        borderColor: `hsla(${index * 360 / data.columns.length}, 70%, 50%, 1)`,
-                        borderWidth: 1
-                    }));
+                    // Get selected columns
+                    const selectedColumns = Array.from(document.getElementById('columns-select').selectedOptions);
+                    const yAxisColumn = document.getElementById('y-axis-select').value;
 
+                    if (selectedColumns.length === 0 || !yAxisColumn) {
+                        showMessage('Please select at least one column for X-axis and one column for Y-axis', 'error');
+                        return;
+                    }
+
+                    // Use first selected column for X-axis labels and Y-axis column for data
+                    const labelColumn = selectedColumns[0].value;
+                    const dataColumn = yAxisColumn;
+
+                    // Prepare data for chart
+                    const labels = data.rows.map(row => row[labelColumn]);
+                    const values = data.rows.map(row => row[dataColumn]);
+
+                    // Create chart
                     new Chart(canvas, {
                         type: chartType,
                         data: {
                             labels: labels,
-                            datasets: datasets
+                            datasets: [{
+                                label: dataColumn,
+                                data: values,
+                                backgroundColor: getRandomColor(),
+                                borderColor: getRandomColor(),
+                                borderWidth: 1
+                            }]
                         },
                         options: {
                             responsive: true,
@@ -1239,7 +1225,12 @@ document.getElementById('data-source-select').addEventListener('change', async f
                                 },
                                 title: {
                                     display: true,
-                                    text: `${data.columns[0].name} by ${data.columns.slice(1).map(c => c.name).join(', ')}`
+                                    text: `${dataColumn} by ${labelColumn}`
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true
                                 }
                             }
                         }
@@ -1272,7 +1263,7 @@ document.getElementById('create-visualization-btn').addEventListener('click', as
     try {
         // Get table columns
         const token = localStorage.getItem('token');
-        const response = await fetch('/api/datasources/table-data', {
+        const response = await fetch('/api/data-sources/table-data', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1319,7 +1310,7 @@ async function loadTableData(dataSourceId, tableName) {
             return;
         }
 
-        const response = await fetch('/api/datasources/table-data', {
+        const response = await fetch('/api/data-sources/table-data', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -1386,33 +1377,48 @@ function createChartVisualization(container, data, chartType) {
     container.innerHTML = '';
     container.appendChild(canvas);
 
-    // Prepare data for chart
-    const labels = data.rows.map(row => row[data.columns[0].column_name]);
-    const datasets = [];
+    // Get selected columns
+    const selectedColumns = Array.from(document.getElementById('columns-select').selectedOptions);
+    const yAxisColumn = document.getElementById('y-axis-select').value;
 
-    // Create a dataset for each numeric column
-    data.columns.slice(1).forEach(column => {
-        if (['int', 'float', 'decimal', 'numeric'].includes(column.data_type)) {
-            datasets.push({
-                label: column.column_name,
-                data: data.rows.map(row => row[column.column_name]),
-                backgroundColor: getRandomColor(),
-                borderColor: getRandomColor(),
-                borderWidth: 1
-            });
-        }
-    });
+    if (selectedColumns.length === 0 || !yAxisColumn) {
+        showMessage('Please select at least one column for X-axis and one column for Y-axis', 'error');
+        return;
+    }
+
+    // Use first selected column for X-axis labels and Y-axis column for data
+    const labelColumn = selectedColumns[0].value;
+    const dataColumn = yAxisColumn;
+
+    // Prepare data for chart
+    const labels = data.rows.map(row => row[labelColumn]);
+    const values = data.rows.map(row => row[dataColumn]);
 
     // Create chart
     new Chart(canvas, {
         type: chartType,
         data: {
             labels: labels,
-            datasets: datasets
+            datasets: [{
+                label: dataColumn,
+                data: values,
+                backgroundColor: getRandomColor(),
+                borderColor: getRandomColor(),
+                borderWidth: 1
+            }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                },
+                title: {
+                    display: true,
+                    text: `${dataColumn} by ${labelColumn}`
+                }
+            },
             scales: {
                 y: {
                     beginAtZero: true

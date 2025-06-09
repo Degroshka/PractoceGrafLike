@@ -15,7 +15,6 @@ use App\Controllers\DashboardController;
 use App\Database\Database;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
-use Slim\Middleware\MethodOverrideMiddleware;
 
 require __DIR__ . '/../vendor/autoload.php';
 
@@ -51,9 +50,14 @@ require __DIR__ . '/database/migrations/create_users_table.php';
 require __DIR__ . '/database/migrations/create_data_sources_table.php';
 require __DIR__ . '/database/migrations/create_dashboards_table.php';
 
-// Add middleware
+// Add Error Middleware
 $app->addErrorMiddleware(true, true, true);
-$app->add(new MethodOverrideMiddleware());
+
+// Add JSON parsing middleware
+$app->addBodyParsingMiddleware();
+
+// Add routing middleware
+$app->addRoutingMiddleware();
 
 // Add CORS middleware
 $app->add(function (Request $request, $handler) {
@@ -61,15 +65,14 @@ $app->add(function (Request $request, $handler) {
     return $response
         ->withHeader('Access-Control-Allow-Origin', '*')
         ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization')
-        ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
-        ->withHeader('Content-Type', 'application/json');
+        ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
 });
 
 // Add routes
 $app->group('/api', function (RouteCollectorProxy $group) {
     // Auth routes
-    $group->post('/auth/register', 'App\Controllers\AuthController:register');
-    $group->post('/auth/login', 'App\Controllers\AuthController:login');
+    $group->post('/register', 'App\Controllers\AuthController:register');
+    $group->post('/login', 'App\Controllers\AuthController:login');
 
     // Data source routes
     $group->get('/data-sources', 'App\Controllers\DataSourceController:index');
