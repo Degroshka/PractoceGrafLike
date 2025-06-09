@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grafana Clone</title>
+    <title>Grafy</title>
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -12,27 +12,27 @@
         <div id="authForms">
             <!-- Login Form -->
             <div id="loginForm" class="auth-form">
-                <h2>Login</h2>
+                <h2>Вход</h2>
                 <form onsubmit="event.preventDefault(); login();">
                     <div class="form-group">
                         <label for="loginEmail">Email:</label>
                         <input type="email" id="loginEmail" required>
                     </div>
                     <div class="form-group">
-                        <label for="loginPassword">Password:</label>
+                        <label for="loginPassword">Пароль:</label>
                         <input type="password" id="loginPassword" required>
                     </div>
-                    <button type="submit">Login</button>
+                    <button type="submit">Войти</button>
                 </form>
-                <p>Don't have an account? <a href="#" onclick="showRegisterForm()">Register</a></p>
+                <p>Нет аккаунта? <a href="#" onclick="showRegisterForm()">Зарегистрироваться</a></p>
             </div>
 
             <!-- Register Form -->
             <div id="registerForm" class="auth-form" style="display: none;">
-                <h2>Register</h2>
+                <h2>Регистрация</h2>
                 <form onsubmit="event.preventDefault(); register();">
                     <div class="form-group">
-                        <label for="registerName">Name:</label>
+                        <label for="registerName">Имя:</label>
                         <input type="text" id="registerName" required>
                     </div>
                     <div class="form-group">
@@ -40,129 +40,128 @@
                         <input type="email" id="registerEmail" required>
                     </div>
                     <div class="form-group">
-                        <label for="registerPassword">Password:</label>
+                        <label for="registerPassword">Пароль:</label>
                         <input type="password" id="registerPassword" required>
                     </div>
-                    <button type="submit">Register</button>
+                    <button type="submit">Зарегистрироваться</button>
                 </form>
-                <p>Already have an account? <a href="#" onclick="showLoginForm()">Login</a></p>
+                <p>Уже есть аккаунт? <a href="#" onclick="showLoginForm()">Войти</a></p>
             </div>
         </div>
 
         <!-- Main Content -->
         <div id="mainContent" style="display: none;">
             <header>
-                <h1>Grafana Clone</h1>
+                <h1>Grafy</h1>
                 <nav>
-                    <button onclick="showDataSources()">Data Sources</button>
-                    <button onclick="showDashboards()">Dashboards</button>
-                    <button onclick="logout()">Logout</button>
+                    <button onclick="showDataSources()">Источники данных</button>
+                    <button onclick="showDashboards()">Панели</button>
+                    <button onclick="logout()">Выйти</button>
                 </nav>
             </header>
 
             <!-- Data Sources Section -->
             <div id="dataSourcesSection">
-                <h2>Data Sources</h2>
-                <button onclick="showAddDataSourceForm()">Add Data Source</button>
+                <h2>Источники данных</h2>
+                <button onclick="showAddDataSourceForm()">Добавить источник</button>
                 <ul id="dataSourcesList"></ul>
 
                 <!-- Add Data Source Form -->
                 <div id="addDataSourceForm" style="display: none;">
-                    <h3>Add New Data Source</h3>
+                    <h3>Новый источник данных</h3>
                     <form onsubmit="event.preventDefault(); addDataSource();">
                         <div class="form-group">
-                            <label for="dsName">Name:</label>
+                            <label for="dsName">Название:</label>
                             <input type="text" id="dsName" required>
                         </div>
                         <div class="form-group">
-                            <label for="dsType">Type:</label>
+                            <label for="dsType">Тип:</label>
                             <select id="dsType" required>
                                 <option value="mysql">MySQL</option>
                                 <option value="postgresql">PostgreSQL</option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="dsHost">Host:</label>
+                            <label for="dsHost">Хост:</label>
                             <input type="text" id="dsHost" required>
                         </div>
                         <div class="form-group">
-                            <label for="dsPort">Port:</label>
+                            <label for="dsPort">Порт:</label>
                             <input type="number" id="dsPort" required>
                         </div>
                         <div class="form-group">
-                            <label for="dsDatabase">Database:</label>
+                            <label for="dsDatabase">База данных:</label>
                             <input type="text" id="dsDatabase" required>
                         </div>
                         <div class="form-group">
-                            <label for="dsUsername">Username:</label>
+                            <label for="dsUsername">Пользователь:</label>
                             <input type="text" id="dsUsername" required>
                         </div>
                         <div class="form-group">
-                            <label for="dsPassword">Password:</label>
+                            <label for="dsPassword">Пароль:</label>
                             <input type="password" id="dsPassword" required>
                         </div>
                         <div class="form-group">
-                            <label for="dsUseSsl">Use SSL:</label>
+                            <label for="dsUseSsl">Использовать SSL:</label>
                             <input type="checkbox" id="dsUseSsl">
                         </div>
-                        <button type="submit">Add Data Source</button>
+                        <button type="submit">Добавить</button>
                     </form>
                 </div>
             </div>
 
             <!-- Dashboards Section -->
             <div id="dashboardsSection" style="display: none;">
-                <h2>Dashboards</h2>
-                <button onclick="showAddDashboardForm()">Create Dashboard</button>
+                <h2>Панели</h2>
+                <button onclick="showAddDashboardForm()">Создать панель</button>
                 
                 <form id="addDashboardForm" style="display: none;">
-                    <h3>Create New Dashboard</h3>
+                    <h3>Новая панель</h3>
                     <div>
-                        <label for="dashboardName">Name:</label>
+                        <label for="dashboardName">Название:</label>
                         <input type="text" id="dashboardName" required>
                     </div>
                     <div>
-                        <label for="dashboardDescription">Description:</label>
+                        <label for="dashboardDescription">Описание:</label>
                         <textarea id="dashboardDescription"></textarea>
                     </div>
                     <div>
-                        <label for="dashboardDataSource">Data Source:</label>
+                        <label for="dashboardDataSource">Источник данных:</label>
                         <select id="dashboardDataSource" required>
-                            <option value="">Select a data source</option>
+                            <option value="">Выберите источник данных</option>
                         </select>
                     </div>
-                    <button type="button" onclick="addDashboard()">Create</button>
-                    <button type="button" onclick="showAddDashboardForm()">Cancel</button>
+                    <button type="button" onclick="addDashboard()">Создать</button>
+                    <button type="button" onclick="showAddDashboardForm()">Отмена</button>
                 </form>
                 
                 <ul id="dashboardsList"></ul>
             </div>
 
             <div id="dashboard-view" class="view" style="display: none;">
-                <h2>Dashboard</h2>
+                <h2>Панель</h2>
                 <div class="dashboard-controls">
                     <select id="data-source-select" required>
-                        <option value="">Select Data Source</option>
+                        <option value="">Выберите источник данных</option>
                     </select>
                     <select id="table-select" disabled>
-                        <option value="">Select Table</option>
+                        <option value="">Выберите таблицу</option>
                     </select>
                     <select id="columns-select" disabled>
-                        <option value="">Select X-axis Columns</option>
-                    </select>
+                        <option value="">Выберите столбцы для оси X</option>
                     </select>
                     <select id="y-axis-select" disabled>
-                        <option value="">Select Y-axis Column</option>
+                        <option value="">Выберите столбец для оси Y</option>
                     </select>
                     <select id="chart-type-select" disabled>
-                        <option value="">Select Chart Type</option>
-                        <option value="table">Table</option>
-                        <option value="bar">Bar Chart</option>
-                        <option value="line">Line Chart</option>
-                        <option value="pie">Pie Chart</option>
-                        <option value="doughnut">Doughnut Chart</option>
+                        <option value="">Выберите тип графика</option>
+                        <option value="table">Таблица</option>
+                        <option value="bar">Столбчатый</option>
+                        <option value="line">Линейный</option>
+                        <option value="pie">Круговой</option>
+                        <option value="doughnut">Кольцевой</option>
                     </select>
-                    <button id="create-visualization-btn" disabled>Create Visualization</button>
+                    <button id="create-visualization-btn" disabled>Создать визуализацию</button>
                 </div>
                 <div id="visualization-container" class="visualization-grid"></div>
             </div>

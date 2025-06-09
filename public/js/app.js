@@ -47,87 +47,67 @@ function showMessage(message, type) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}`;
     messageDiv.textContent = message;
-    
-    const container = document.querySelector('.container');
-    container.insertBefore(messageDiv, container.firstChild);
-    
-    setTimeout(() => {
-        messageDiv.remove();
-    }, 5000);
+    document.body.appendChild(messageDiv);
+    setTimeout(() => messageDiv.remove(), 5000);
 }
 
 // Auth functions
 async function register() {
-    const name = document.getElementById('registerName').value;
-    const email = document.getElementById('registerEmail').value;
-    const password = document.getElementById('registerPassword').value;
-
-    if (!name || !email || !password) {
-        showMessage('Please fill in all fields', 'error');
-        return;
-    }
-
     try {
+        const name = document.getElementById('registerName').value;
+        const email = document.getElementById('registerEmail').value;
+        const password = document.getElementById('registerPassword').value;
+
         const response = await fetch('/api/auth/register', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
+                'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                name: name.trim(),
-                email: email.trim(),
-                password: password.trim()
-            })
+            body: JSON.stringify({ name, email, password })
         });
 
-        const data = await response.json();
-        console.log('Registration response:', data);
-        
-        if (data.success) {
-            localStorage.setItem('token', data.token);
-            localStorage.setItem('user', JSON.stringify(data.user));
-            showMessage('Registration successful!', 'success');
+        const result = await response.json();
+        if (result.success) {
+            localStorage.setItem('token', result.token);
+            localStorage.setItem('user', JSON.stringify(result.user));
+            showMessage('Регистрация успешна! Теперь вы можете войти.', 'success');
             document.getElementById('authForms').style.display = 'none';
             document.getElementById('mainContent').style.display = 'block';
             showDataSources();
         } else {
-            showMessage(data.error || 'Registration failed', 'error');
+            showMessage(result.message || 'Ошибка при регистрации', 'error');
         }
     } catch (error) {
-        console.error('Registration error:', error);
-        showMessage('Registration failed. Please try again.', 'error');
+        showMessage('Ошибка при регистрации', 'error');
     }
 }
 
 async function login() {
-    const email = document.getElementById('loginEmail').value;
-    const password = document.getElementById('loginPassword').value;
-
     try {
+        const email = document.getElementById('loginEmail').value;
+        const password = document.getElementById('loginPassword').value;
+
         const response = await fetch('/api/auth/login', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify({ email, password })
         });
 
-        const data = await response.json();
-        if (data.success) {
-            localStorage.setItem('token', data.token);
-            localStorage.setItem('user', JSON.stringify(data.user));
+        const result = await response.json();
+        if (result.success) {
+            localStorage.setItem('token', result.token);
+            localStorage.setItem('user', JSON.stringify(result.user));
             showMessage('Login successful!', 'success');
             document.getElementById('authForms').style.display = 'none';
             document.getElementById('mainContent').style.display = 'block';
             showDataSources();
         } else {
-            showMessage(data.message || 'Login failed', 'error');
+            showMessage(result.message || 'Неверный email или пароль', 'error');
         }
     } catch (error) {
-        console.error('Error:', error);
-        showMessage('Login failed: ' + error.message, 'error');
+        showMessage('Ошибка при входе', 'error');
     }
 }
 
@@ -296,7 +276,7 @@ async function deleteDataSource(id) {
             return;
         }
 
-        if (!confirm('Are you sure you want to delete this data source?')) {
+        if (!confirm('Вы уверены, что хотите удалить этот источник данных?')) {
             return;
         }
 
@@ -324,7 +304,7 @@ async function deleteDataSource(id) {
         console.log('Delete response data:', data);
         
         if (data.success) {
-            showMessage('Data source deleted successfully', 'success');
+            showMessage('Источник данных успешно удален', 'success');
             loadDataSources(); // Reload the list
         } else {
             showMessage(data.message || 'Failed to delete data source', 'error');
@@ -442,7 +422,7 @@ async function loadDashboards() {
 }
 
 async function deleteDashboard(id) {
-    if (!confirm('Are you sure you want to delete this dashboard?')) {
+    if (!confirm('Вы уверены, что хотите удалить эту панель?')) {
         return;
     }
 
@@ -463,7 +443,7 @@ async function deleteDashboard(id) {
         const data = await response.json();
         
         if (data.success) {
-            showMessage('Dashboard deleted successfully!', 'success');
+            showMessage('Панель успешно удалена', 'success');
             loadDashboards();
         } else {
             showMessage(data.error || 'Failed to delete dashboard', 'error');
