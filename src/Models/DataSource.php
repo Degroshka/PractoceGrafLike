@@ -17,7 +17,7 @@ class DataSource extends Model
         'type',
         'host',
         'port',
-        'db_name',
+        'database',
         'username',
         'password',
         'use_ssl',
@@ -71,9 +71,9 @@ class DataSource extends Model
     {
         switch ($this->type) {
             case 'mysql':
-                return "mysql:host={$this->host};port={$this->port};dbname={$this->db_name};charset=utf8mb4;ssl-mode=DISABLED";
+                return "mysql:host={$this->host};port={$this->port};dbname={$this->database};charset=utf8mb4;ssl-mode=DISABLED";
             case 'postgresql':
-                return "pgsql:host={$this->host};port={$this->port};dbname={$this->db_name}";
+                return "pgsql:host={$this->host};port={$this->port};dbname={$this->database}";
             default:
                 throw new \Exception("Unsupported database type: {$this->type}");
         }
@@ -85,7 +85,7 @@ class DataSource extends Model
             'type' => $this->type,
             'host' => $this->host,
             'port' => $this->port,
-            'database' => $this->db_name,
+            'database' => $this->database,
             'username' => $this->username,
             'password' => $this->password,
             'use_ssl' => $this->use_ssl

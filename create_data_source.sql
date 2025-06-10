@@ -1,2 +1,2 @@
-INSERT INTO data_sources (name, type, connection_type, host, port, db_name, username, password, use_ssl, user_id, created_at, updated_at) 
+INSERT INTO data_sources (name, type, connection_type, host, port, database, username, password, use_ssl, user_id, created_at, updated_at) 
 VALUES ('Test MySQL', 'mysql', 'local', 'mysql', 3306, 'test_db', 'test_user', 'test_password', 0, 4, NOW(), NOW()); 

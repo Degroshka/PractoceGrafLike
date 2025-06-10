@@ -226,7 +226,7 @@ async function addDataSource() {
             connection_type: 'local',
             host: document.getElementById('dsHost').value,
             port: parseInt(document.getElementById('dsPort').value),
-            db_name: document.getElementById('dsDatabase').value,
+            database: document.getElementById('dsDatabase').value,
             username: document.getElementById('dsUsername').value,
             password: document.getElementById('dsPassword').value,
             use_ssl: document.getElementById('dsUseSsl').checked,

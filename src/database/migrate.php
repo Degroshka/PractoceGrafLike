@@ -7,8 +7,8 @@ use Illuminate\Database\Capsule\Manager as Capsule;
 // Database configuration
 $config = [
     'driver'    => 'mysql',
-    'host'      => 'localhost', // Changed from mysql to localhost
-    'port'      => '3307',      // Changed from 3306 to 3307
+    'host'      => 'practocegraflike-mysql-1', // Changed from mysql to localhost
+    'port'      => '3306',      // Changed from 3306 to 3307
     'database'  => 'grafana_clone',
     'username'  => 'root',
     'password'  => 'secret',

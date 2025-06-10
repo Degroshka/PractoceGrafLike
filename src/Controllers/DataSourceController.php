@@ -16,7 +16,7 @@ class DataSourceController extends BaseController
             $data = $request->getParsedBody();
             
             // Validate required fields
-            $requiredFields = ['name', 'type', 'host', 'port', 'db_name', 'username', 'password'];
+            $requiredFields = ['name', 'type', 'host', 'port', 'database', 'username', 'password'];
             foreach ($requiredFields as $field) {
                 if (!isset($data[$field]) || empty($data[$field])) {
                     return $this->respondWithError($response, "Missing required field: {$field}", 400);
@@ -45,7 +45,7 @@ class DataSourceController extends BaseController
             $dataSource->type = $data['type'];
             $dataSource->host = $data['host'];
             $dataSource->port = $data['port'];
-            $dataSource->db_name = $data['db_name'];
+            $dataSource->database = $data['database'];
             $dataSource->username = $data['username'];
             $dataSource->password = $data['password'];
             $dataSource->use_ssl = isset($data['use_ssl']) ? (bool)$data['use_ssl'] : false;
@@ -157,7 +157,7 @@ class DataSourceController extends BaseController
             error_log('TestConnection config: ' . json_encode([
                 'host' => $dataSource->host,
                 'port' => $dataSource->port,
-                'database' => $dataSource->db_name,
+                'database' => $dataSource->database,
                 'username' => $dataSource->username,
                 'password_length' => strlen($dataSource->password ?? ''),
                 'type' => $dataSource->type,
@@ -175,7 +175,7 @@ class DataSourceController extends BaseController
                 'type' => $dataSource->type,
                 'host' => $dataSource->host,
                 'port' => $dataSource->port,
-                'database' => $dataSource->db_name,
+                'database' => $dataSource->database,
                 'username' => $dataSource->username,
                 'password' => $dataSource->password,
                 'use_ssl' => false // Explicitly disable SSL for testing
@@ -240,9 +240,9 @@ class DataSourceController extends BaseController
     {
         $dsn = '';
         if ($dataSource->type === 'mysql') {
-            $dsn = "mysql:host={$dataSource->host};port={$dataSource->port};dbname={$dataSource->db_name}";
+            $dsn = "mysql:host={$dataSource->host};port={$dataSource->port};dbname={$dataSource->database}";
         } elseif ($dataSource->type === 'postgresql') {
-            $dsn = "pgsql:host={$dataSource->host};port={$dataSource->port};dbname={$dataSource->db_name}";
+            $dsn = "pgsql:host={$dataSource->host};port={$dataSource->port};dbname={$dataSource->database}";
         }
 
         $options = [

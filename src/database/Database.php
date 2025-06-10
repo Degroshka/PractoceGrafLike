@@ -21,7 +21,7 @@ class Database {
             'type' => $config['type'] ?? 'mysql',
             'host' => $config['host'] ?? 'localhost',
             'port' => $config['port'] ?? 3306,
-            'database' => $config['db_name'] ?? $config['database'] ?? '',
+            'database' => $config['database'] ?? $config['database'] ?? '',
             'username' => $config['username'] ?? '',
             'password' => $config['password'] ?? '',
             'use_ssl' => $config['use_ssl'] ?? false,

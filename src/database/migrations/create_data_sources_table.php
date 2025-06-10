@@ -11,7 +11,7 @@ if (!Capsule::schema()->hasTable('data_sources')) {
         $table->string('type');
         $table->string('host');
         $table->integer('port');
-        $table->string('db_name');
+        $table->string('database');
         $table->string('username');
         $table->string('password');
         $table->boolean('use_ssl')->default(false);

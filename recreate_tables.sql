@@ -7,7 +7,7 @@ CREATE TABLE data_sources (
     connection_type VARCHAR(255) NOT NULL DEFAULT 'local',
     host VARCHAR(255) NOT NULL,
     port INT NOT NULL,
-    db_name VARCHAR(255) NOT NULL,
+    database VARCHAR(255) NOT NULL,
     username VARCHAR(255) NOT NULL,
     password VARCHAR(255) NOT NULL,
     use_ssl TINYINT(1) NOT NULL DEFAULT 0,
