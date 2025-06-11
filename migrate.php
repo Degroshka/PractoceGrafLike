@@ -12,8 +12,8 @@ $dotenv->load();
 $capsule = new Capsule;
 $capsule->addConnection([
     'driver'    => $_ENV['DB_CONNECTION'] ?? 'mysql',
-    'host'      => $_ENV['DB_HOST'] ?? 'localhost',
-    'port'      => $_ENV['DB_PORT'] ?? '3307',
+    'host'      => $_ENV['DB_HOST'] ?? 'mysql',
+    'port'      => $_ENV['DB_PORT'] ?? '3306',
     'database'  => $_ENV['DB_DATABASE'] ?? 'grafana_clone',
     'username'  => $_ENV['DB_USERNAME'] ?? 'root',
     'password'  => $_ENV['DB_PASSWORD'] ?? 'secret',

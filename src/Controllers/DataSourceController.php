@@ -373,7 +373,7 @@ class DataSourceController extends BaseController
             }
 
             error_log("Columns found: " . implode(', ', array_column($columns, 'name')));
-            return $this->respondWithData($response, $columns);
+            return $this->respondWithData($response, ['columns' => $columns]);
         } catch (\Exception $e) {
             error_log("Error getting table structure: " . $e->getMessage());
             error_log("Stack trace: " . $e->getTraceAsString());

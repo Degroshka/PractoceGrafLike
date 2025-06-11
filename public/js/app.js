@@ -505,6 +505,183 @@ async function addDashboard() {
     }
 }
 
+// Consolidated data source change handler
+async function handleDataSourceChange() {
+    const dataSourceId = this.value;
+    const tableSelect = document.getElementById('table-select');
+    const chartTypeSelect = document.getElementById('chart-type-select');
+    const createBtn = document.getElementById('create-visualization-btn');
+
+    if (!dataSourceId) {
+        tableSelect.disabled = true;
+        chartTypeSelect.disabled = true;
+        createBtn.disabled = true;
+        return;
+    }
+
+    try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            showLoginForm();
+            return;
+        }
+
+        // Get tables from the data source
+        const tablesResponse = await fetch('/api/data-sources/tables', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ data_source_id: dataSourceId })
+        });
+
+        if (!tablesResponse.ok) {
+            throw new Error('Failed to get tables');
+        }
+
+        const tablesResult = await tablesResponse.json();
+        if (!tablesResult.success) {
+            throw new Error(tablesResult.message);
+        }
+
+        // Update table select
+        tableSelect.innerHTML = '<option value="">Select Table</option>';
+        tablesResult.data.forEach(table => {
+            const option = document.createElement('option');
+            option.value = table;
+            option.textContent = table;
+            tableSelect.appendChild(option);
+        });
+
+        // Enable table select
+        tableSelect.disabled = false;
+        chartTypeSelect.disabled = false;
+        createBtn.disabled = false;
+
+        // Add event listener for table selection
+        tableSelect.onchange = async function() {
+            const selectedTable = this.value;
+            const columnsSelect = document.getElementById('columns-select');
+            
+            // Reset UI state
+            if (columnsSelect) {
+                columnsSelect.innerHTML = '<option value="">Select Columns</option>';
+                columnsSelect.disabled = true;
+            }
+            if (chartTypeSelect) {
+                chartTypeSelect.innerHTML = `
+                    <option value="">Select Chart Type</option>
+                    <option value="table">Table</option>
+                    <option value="bar">Bar Chart</option>
+                    <option value="line">Line Chart</option>
+                    <option value="pie">Pie Chart</option>
+                    <option value="doughnut">Doughnut Chart</option>
+                `;
+                chartTypeSelect.disabled = true;
+            }
+            if (createBtn) {
+                createBtn.disabled = true;
+            }
+
+            if (!selectedTable) {
+                return;
+            }
+
+            try {
+                console.log('Fetching table structure for:', selectedTable);
+                const response = await fetch('/api/data-sources/table-structure', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        data_source_id: dataSourceId,
+                        table_name: selectedTable
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to get table columns');
+                }
+
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error(result.message);
+                }
+
+                // Update columns select
+                if (columnsSelect && result.data && result.data.columns) {
+                    // Clear and update options
+                    columnsSelect.innerHTML = '<option value="">Select Columns</option>';
+                    result.data.columns.forEach(column => {
+                        const option = document.createElement('option');
+                        option.value = column.name;
+                        option.textContent = `${column.name} (${column.type})`;
+                        if (column.type) {
+                            option.dataset.type = column.type.toLowerCase();
+                        }
+                        columnsSelect.appendChild(option);
+                    });
+
+                    // Enable the select
+                    columnsSelect.disabled = false;
+
+                    // Add event listeners
+                    columnsSelect.onchange = function() {
+                        const hasSelectedColumns = this.selectedOptions.length > 0;
+                        
+                        // Enable/disable chart type select based on column selection
+                        if (chartTypeSelect) {
+                            chartTypeSelect.disabled = !hasSelectedColumns;
+                        }
+
+                        // Enable create button if both selects have values
+                        if (createBtn) {
+                            createBtn.disabled = !(hasSelectedColumns && chartTypeSelect?.value);
+                        }
+                    };
+
+                    // Add event listener for chart type selection
+                    if (chartTypeSelect) {
+                        chartTypeSelect.onchange = function() {
+                            // Enable create button if both selects have values
+                            if (createBtn) {
+                                createBtn.disabled = !(columnsSelect.selectedOptions.length > 0 && this.value);
+                            }
+                        };
+                    }
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                showMessage('Failed to load table columns: ' + error.message, 'error');
+                
+                // Reset UI state on error
+                if (columnsSelect) {
+                    columnsSelect.innerHTML = '<option value="">Select Columns</option>';
+                    columnsSelect.disabled = true;
+                }
+                if (chartTypeSelect) {
+                    chartTypeSelect.innerHTML = '<option value="">Select Chart Type</option>';
+                    chartTypeSelect.disabled = true;
+                }
+                if (createBtn) {
+                    createBtn.disabled = true;
+                }
+            }
+        };
+
+    } catch (error) {
+        console.error('Error:', error);
+        showMessage('Failed to load data source details: ' + error.message, 'error');
+    }
+}
+
+// Update viewDashboard function to use the consolidated handler
 async function viewDashboard(id) {
     try {
         // Show dashboard view
@@ -537,218 +714,9 @@ async function viewDashboard(id) {
             dataSourceSelect.appendChild(option);
         });
 
-        // Add event listeners
-        dataSourceSelect.onchange = async function() {
-            const tableSelect = document.getElementById('table-select');
-            tableSelect.disabled = !this.value;
-            tableSelect.innerHTML = '<option value="">Select Table</option>';
-            
-            if (this.value) {
-                try {
-                    const response = await fetch('/api/data-sources/tables', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': 'Bearer ' + localStorage.getItem('token')
-                        },
-                        body: JSON.stringify({
-                            data_source_id: this.value
-                        })
-                    });
+        // Add event listener for data source selection
+        dataSourceSelect.onchange = handleDataSourceChange;
 
-                    if (!response.ok) {
-                        throw new Error('Failed to load tables');
-                    }
-
-                    const result = await response.json();
-                    if (!result.success) {
-                        throw new Error(result.message);
-                    }
-
-                    result.data.forEach(table => {
-                        const option = document.createElement('option');
-                        option.value = table;
-                        option.textContent = table;
-                        tableSelect.appendChild(option);
-                    });
-                } catch (error) {
-                    console.error('Error loading tables:', error);
-                    showMessage(error.message, 'error');
-                }
-            }
-        };
-
-        document.getElementById('table-select').onchange = async function() {
-            const columnsSelect = document.getElementById('columns-select');
-            const yAxisSelect = document.getElementById('y-axis-select');
-            const chartTypeSelect = document.getElementById('chart-type-select');
-            const createBtn = document.getElementById('create-visualization-btn');
-            
-            columnsSelect.disabled = !this.value;
-            yAxisSelect.disabled = !this.value;
-            chartTypeSelect.disabled = !this.value;
-            createBtn.disabled = !this.value;
-            
-            columnsSelect.innerHTML = '<option value="">Select X-axis Column</option>';
-            yAxisSelect.innerHTML = '<option value="">Select Y-axis Column</option>';
-            
-            if (this.value) {
-                try {
-                    const response = await fetch('/api/data-sources/table-structure', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': 'Bearer ' + localStorage.getItem('token')
-                        },
-                        body: JSON.stringify({
-                            data_source_id: document.getElementById('data-source-select').value,
-                            table_name: this.value
-                        })
-                    });
-
-                    if (!response.ok) {
-                        throw new Error('Failed to load table structure');
-                    }
-
-                    const result = await response.json();
-                    if (!result.success) {
-                        throw new Error(result.message || 'Failed to load table structure');
-                    }
-
-                    // Update columns select
-                    columnsSelect.innerHTML = '<option value="">Select Columns</option>';
-                    if (result.data && result.data.columns) {
-                        console.log('Server response:', result.data); // Debug log
-                        result.data.columns.forEach(column => {
-                            console.log('Processing column:', column); // Debug log
-                            const option = document.createElement('option');
-                            option.value = column.name;
-                            option.textContent = `${column.name} (${column.type})`;
-                            // Сохраняем тип колонки как атрибут data-type
-                            if (column.type) {
-                                option.dataset.type = column.type.toLowerCase();
-                                console.log('Set data-type for', column.name, 'to', column.type.toLowerCase()); // Debug log
-                            } else {
-                                console.warn('No type for column:', column.name); // Debug log
-                            }
-                            columnsSelect.appendChild(option);
-                        });
-                    }
-
-                    // Enable columns select
-                    columnsSelect.disabled = false;
-
-                    // Remove existing event listeners
-                    const newColumnsSelect = columnsSelect.cloneNode(true);
-                    columnsSelect.parentNode.replaceChild(newColumnsSelect, columnsSelect);
-
-                    // Add event listener for column selection
-                    newColumnsSelect.addEventListener('change', function() {
-                        const selectedColumns = Array.from(this.selectedOptions);
-                        console.log('Selected columns:', selectedColumns); // Debug log
-                        selectedColumns.forEach(col => {
-                            console.log('Column type for', col.value, ':', col.dataset.type); // Debug log
-                        });
-                        const chartType = document.getElementById('chart-type-select').value;
-                        
-                        // Проверяем совместимость выбранных колонок с типом графика
-                        const isCompatible = checkChartCompatibility(selectedColumns, chartType);
-                        console.log('Chart compatibility:', isCompatible); // Debug log
-                        
-                        // Обновляем доступные типы графиков
-                        updateAvailableChartTypes(selectedColumns);
-                        
-                        // Enable create button only if columns and chart type are selected and compatible
-                        document.getElementById('create-visualization-btn').disabled = 
-                            selectedColumns.length === 0 || !chartType || !isCompatible;
-                    });
-
-                } catch (error) {
-                    console.error('Error:', error);
-                    showMessage('Failed to load table columns: ' + error.message, 'error');
-                }
-            }
-        };
-
-        // Add event listener for create visualization button
-        document.getElementById('create-visualization-btn').addEventListener('click', async function() {
-            const dataSourceId = document.getElementById('data-source-select').value;
-            const selectedTable = document.getElementById('table-select').value;
-            const selectedColumns = Array.from(document.getElementById('columns-select').selectedOptions).map(option => option.value);
-            const chartType = document.getElementById('chart-type-select').value;
-
-            if (!dataSourceId || !selectedTable || selectedColumns.length === 0 || !chartType) {
-                showMessage('Please select all required fields', 'error');
-                return;
-            }
-
-            try {
-                const token = localStorage.getItem('token');
-                const response = await fetch('/api/data-sources/table-data', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`,
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        data_source_id: dataSourceId,
-                        table_name: selectedTable,
-                        columns: selectedColumns,
-                        limit: 1000
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error('Failed to get table data');
-                }
-
-                const result = await response.json();
-                if (!result.success) {
-                    throw new Error(result.message);
-                }
-
-                // Create visualization
-                const container = document.createElement('div');
-                container.className = 'visualization-item';
-                document.getElementById('visualization-container').appendChild(container);
-
-                if (chartType === 'table') {
-                    createTableVisualization(container, result.data, selectedTable);
-                } else {
-                    createChartVisualization(container, result.data, chartType);
-                }
-
-            } catch (error) {
-                console.error('Error:', error);
-                showMessage('Failed to create visualization: ' + error.message, 'error');
-            }
-        });
-
-        // Load existing visualizations if dashboard ID is provided
-        if (id) {
-            try {
-                const response = await fetch(`/api/dashboards/${id}`, {
-                    headers: {
-                        'Authorization': 'Bearer ' + localStorage.getItem('token')
-                    }
-                });
-
-                if (!response.ok) {
-                    throw new Error('Failed to load dashboard');
-                }
-
-                const result = await response.json();
-                if (!result.success) {
-                    throw new Error(result.message);
-                }
-
-                // TODO: Load existing visualizations
-            } catch (error) {
-                console.error('Error loading dashboard:', error);
-                showMessage(error.message, 'error');
-            }
-        }
     } catch (error) {
         console.error('Error viewing dashboard:', error);
         showMessage(error.message, 'error');
@@ -1035,303 +1003,6 @@ function getRandomColor() {
 // createVisualization(1, 'users', ['name', 'age', 'salary'], 'bar', { title: 'User Statistics' });
 // createVisualization(1, 'sales', ['month', 'revenue'], 'line', { title: 'Monthly Revenue' });
 // createVisualization(1, 'products', ['category', 'count'], 'pie', { title: 'Products by Category' });
-
-// Handle data source selection
-document.getElementById('data-source-select').addEventListener('change', async function() {
-    const dataSourceId = this.value;
-    const tableSelect = document.getElementById('table-select');
-    const chartTypeSelect = document.getElementById('chart-type-select');
-    const createBtn = document.getElementById('create-visualization-btn');
-
-    if (!dataSourceId) {
-        tableSelect.disabled = true;
-        chartTypeSelect.disabled = true;
-        createBtn.disabled = true;
-        return;
-    }
-
-    try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(`/api/data-sources/${dataSourceId}`, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/json'
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to get data source details');
-        }
-
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error(result.message);
-        }
-
-        // Get tables from the data source
-        const tablesResponse = await fetch('/api/data-sources/tables', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({ data_source_id: dataSourceId })
-        });
-
-        if (!tablesResponse.ok) {
-            throw new Error('Failed to get tables');
-        }
-
-        const tablesResult = await tablesResponse.json();
-        if (!tablesResult.success) {
-            throw new Error(tablesResult.message);
-        }
-
-        // Update table select
-        tableSelect.innerHTML = '<option value="">Select Table</option>';
-        tablesResult.data.forEach(table => {
-            const option = document.createElement('option');
-            option.value = table;
-            option.textContent = table;
-            tableSelect.appendChild(option);
-        });
-
-        // Enable table select
-        tableSelect.disabled = false;
-        chartTypeSelect.disabled = false;
-        createBtn.disabled = false;
-
-        // Add event listener for table selection
-        tableSelect.addEventListener('change', async function() {
-            const selectedTable = this.value;
-            const columnsSelect = document.getElementById('columns-select');
-            columnsSelect.innerHTML = '<option value="">Select Columns</option>';
-            columnsSelect.disabled = true;
-
-            if (!selectedTable) {
-                return;
-            }
-
-            try {
-                const token = localStorage.getItem('token');
-                if (!token) {
-                    showLoginForm();
-                    return;
-                }
-
-                const response = await fetch('/api/data-sources/table-columns', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        data_source_id: dataSourceId,
-                        table_name: selectedTable
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error('Failed to get table columns');
-                }
-
-                const result = await response.json();
-                if (!result.success) {
-                    throw new Error(result.message);
-                }
-
-                // Update columns select
-                columnsSelect.innerHTML = '<option value="">Select Columns</option>';
-                if (result.data && result.data.columns) {
-                    console.log('Server response:', result.data); // Debug log
-                    result.data.columns.forEach(column => {
-                        console.log('Processing column:', column); // Debug log
-                        const option = document.createElement('option');
-                        option.value = column.name;
-                        option.textContent = `${column.name} (${column.type})`;
-                        // Сохраняем тип колонки как атрибут data-type
-                        if (column.type) {
-                            option.dataset.type = column.type.toLowerCase();
-                            console.log('Set data-type for', column.name, 'to', column.type.toLowerCase()); // Debug log
-                        } else {
-                            console.warn('No type for column:', column.name); // Debug log
-                        }
-                        columnsSelect.appendChild(option);
-                    });
-                }
-
-                // Enable columns select
-                columnsSelect.disabled = false;
-
-                // Remove existing event listeners
-                const newColumnsSelect = columnsSelect.cloneNode(true);
-                columnsSelect.parentNode.replaceChild(newColumnsSelect, columnsSelect);
-
-                // Add event listener for column selection
-                newColumnsSelect.addEventListener('change', function() {
-                    const selectedColumns = Array.from(this.selectedOptions);
-                    console.log('Selected columns:', selectedColumns); // Debug log
-                    selectedColumns.forEach(col => {
-                        console.log('Column type for', col.value, ':', col.dataset.type); // Debug log
-                    });
-                    const chartType = document.getElementById('chart-type-select').value;
-                    
-                    // Проверяем совместимость выбранных колонок с типом графика
-                    const isCompatible = checkChartCompatibility(selectedColumns, chartType);
-                    console.log('Chart compatibility:', isCompatible); // Debug log
-                    
-                    // Обновляем доступные типы графиков
-                    updateAvailableChartTypes(selectedColumns);
-                    
-                    // Enable create button only if columns and chart type are selected and compatible
-                    document.getElementById('create-visualization-btn').disabled = 
-                        selectedColumns.length === 0 || !chartType || !isCompatible;
-                });
-
-            } catch (error) {
-                console.error('Error:', error);
-                showMessage('Failed to load table columns: ' + error.message, 'error');
-            }
-        });
-
-    } catch (error) {
-        console.error('Error:', error);
-        showMessage('Failed to load data source details: ' + error.message, 'error');
-    }
-});
-
-// Функция для проверки совместимости колонок с типом графика
-function checkChartCompatibility(selectedColumns, chartType) {
-    if (!selectedColumns.length || !chartType) return false;
-
-    // Для таблицы всегда возвращаем true
-    if (chartType === 'table') return true;
-
-    // Получаем типы колонок из их значений
-    const columnTypes = selectedColumns.map(col => {
-        // Получаем тип из dataset
-        const type = col.dataset.type;
-        console.log('Column type from dataset:', type); // Debug log
-        if (type) {
-            return type.toLowerCase();
-        }
-        // Если тип не указан, предполагаем что это числовой тип
-        return 'numeric';
-    });
-    
-    console.log('Column types:', columnTypes); // Debug log
-    
-    switch (chartType) {
-        case 'bar':
-        case 'line':
-            // Для bar и line нужны числовые данные
-            return columnTypes.some(type => 
-                type === 'numeric' ||
-                type.includes('int') || 
-                type.includes('float') || 
-                type.includes('double') || 
-                type.includes('decimal')
-            );
-        case 'pie':
-        case 'doughnut':
-            // Для pie и doughnut нужны категориальные данные
-            return columnTypes.some(type => 
-                type === 'string' ||
-                type.includes('char') || 
-                type.includes('text') || 
-                type.includes('varchar')
-            );
-        default:
-            return false;
-    }
-}
-
-// Функция для обновления доступных типов графиков
-function updateAvailableChartTypes(selectedColumns) {
-    const chartTypeSelect = document.getElementById('chart-type-select');
-    
-    // Всегда доступна таблица
-    chartTypeSelect.innerHTML = '<option value="">Select Chart Type</option><option value="table">Table</option>';
-    
-    // Получаем типы колонок
-    const columnTypes = selectedColumns.map(col => {
-        const type = col.dataset.type;
-        console.log('Column type in updateAvailableChartTypes:', type); // Debug log
-        return type ? type.toLowerCase() : 'numeric';
-    });
-    
-    console.log('Column types in updateAvailableChartTypes:', columnTypes); // Debug log
-    
-    // Проверяем наличие числовых данных для bar и line
-    const hasNumericData = columnTypes.some(type => 
-        type === 'numeric' ||
-        type.includes('int') || 
-        type.includes('float') || 
-        type.includes('double') || 
-        type.includes('decimal')
-    );
-    
-    if (hasNumericData) {
-        chartTypeSelect.innerHTML += '<option value="bar">Bar Chart</option><option value="line">Line Chart</option>';
-    }
-    
-    // Проверяем наличие категориальных данных для pie и doughnut
-    const hasCategoricalData = columnTypes.some(type => 
-        type === 'string' ||
-        type.includes('char') || 
-        type.includes('text') || 
-        type.includes('varchar')
-    );
-    
-    if (hasCategoricalData) {
-        chartTypeSelect.innerHTML += '<option value="pie">Pie Chart</option><option value="doughnut">Doughnut Chart</option>';
-    }
-}
-
-async function loadTableData(dataSourceId, tableName) {
-    try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-            showLoginForm();
-            return;
-        }
-
-        if (!dataSourceId || !tableName) {
-            throw new Error('Data source ID and table name are required');
-        }
-
-        const response = await fetch('/api/data-sources/table-data', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({
-                id: dataSourceId,
-                table: tableName,
-                columns: ['*']
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        if (!data.success) {
-            throw new Error(data.message || 'Failed to load table data');
-        }
-
-        return data.data;
-    } catch (error) {
-        console.error('Error loading table data:', error);
-        showMessage('Failed to load table data: ' + error.message, 'error');
-        return null;
-    }
-}
 
 function showDashboard() {
     // Hide all sections

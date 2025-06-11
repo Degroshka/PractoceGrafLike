@@ -1,7 +1,63 @@
+# Version control
 .git
 .gitignore
-node_modules
-vendor
-storage/logs/*
-storage/cache/*
-storage/app/*
+.gitattributes
+
+# Development files
+.editorconfig
+.php_cs
+.php_cs.cache
+phpunit.xml
+phpunit.xml.dist
+README.md
+CHANGELOG.md
+composer.lock
+package-lock.json
+yarn.lock
+
+# IDE files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+
+# Node modules (if using frontend build)
+/node_modules
+/public/build
+/public/hot
+/public/storage
+/public/css
+/public/js
+/public/mix-manifest.json
+
+# Testing
+/coverage
+.phpunit.result.cache
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Keep storage structure but ignore contents
+/storage/logs/*
+/storage/cache/*
+/storage/app/*
+/storage/framework/*
+!storage/logs/.gitkeep
+!storage/cache/.gitkeep
+!storage/app/.gitkeep
+!storage/framework/.gitkeep
+
+# Keep vendor directory (we want to copy installed dependencies)
+!/vendor/

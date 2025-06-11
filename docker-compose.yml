@@ -35,19 +35,27 @@ services:
       - app-network
 
   mysql:
-    image: mysql:8.0
+    image: mysql:5.7
     ports:
       - "3307:3306"
     environment:
       - MYSQL_DATABASE=grafana_clone
       - MYSQL_ROOT_PASSWORD=secret
+      - MYSQL_INNODB_BUFFER_POOL_SIZE=256M
+      - MYSQL_INNODB_LOG_FILE_SIZE=64M
+      - MYSQL_INNODB_LOG_BUFFER_SIZE=16M
+      - MYSQL_INNODB_FLUSH_LOG_AT_TRX_COMMIT=2
+      - MYSQL_INNODB_FLUSH_METHOD=O_DSYNC
+    command: --innodb_use_native_aio=0 --bind-address=0.0.0.0
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-psecret"]
-      interval: 5s
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-psecret", "--silent"]
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
     networks:
       - app-network
 
